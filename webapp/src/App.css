@@ -1,0 +1,223 @@
+/* Tingu Tales - Custom Styles */
+
+/* Blur-reveal animation for image loading */
+@keyframes blurReveal {
+  0% { filter: blur(20px) saturate(1.2); transform: scale(1.05); opacity: 0.6; }
+  60% { filter: blur(8px) saturate(1.1); transform: scale(1.02); opacity: 0.9; }
+  100% { filter: blur(0px) saturate(1); transform: scale(1); opacity: 1; }
+}
+
+@keyframes shimmerPulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.7; }
+}
+
+.img-blur-loading {
+  filter: blur(20px) saturate(1.2);
+  transform: scale(1.05);
+  opacity: 0.6;
+  transition: filter 0.6s ease-out, transform 0.6s ease-out, opacity 0.4s ease-out;
+}
+
+.img-blur-loaded {
+  filter: blur(0px) saturate(1);
+  transform: scale(1);
+  opacity: 1;
+}
+
+.img-placeholder {
+  background: linear-gradient(135deg, #F3E8FF 0%, #FDFBF7 50%, #F3E8FF 100%);
+  background-size: 200% 200%;
+  animation: shimmerPulse 2s ease-in-out infinite;
+}
+
+/* Paper texture background */
+.bg-paper {
+  background-color: #FDFBF7;
+  background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23f3e8ff' fill-opacity='0.3'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+}
+
+/* Magical loading text animation */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-8px); }
+}
+
+@keyframes sparkle {
+  0%, 100% { opacity: 0; transform: scale(0); }
+  50% { opacity: 1; transform: scale(1); }
+}
+
+.animate-fade-in-up {
+  animation: fadeInUp 0.5s ease-out forwards;
+}
+
+.animate-float {
+  animation: float 3s ease-in-out infinite;
+}
+
+.animate-shimmer {
+  background: linear-gradient(90deg, transparent, rgba(255, 159, 28, 0.15), transparent);
+  background-size: 200% 100%;
+  animation: shimmer 2s infinite;
+}
+
+/* Storybook page flip effect */
+.page-shadow {
+  box-shadow:
+    0 0 5px rgba(0, 0, 0, 0.05),
+    5px 0 15px rgba(0, 0, 0, 0.08),
+    inset -2px 0 5px rgba(0, 0, 0, 0.03);
+}
+
+/* ── Page-turn flipbook ── */
+.book-scene {
+  perspective: 2000px;
+}
+
+/* The entire book spread */
+.book-spread {
+  transform-style: preserve-3d;
+}
+
+/* Individual turning leaf */
+.book-leaf {
+  position: absolute;
+  top: 0; bottom: 0;
+  width: 50%;
+  transform-origin: left center;
+  transform-style: preserve-3d;
+  transition: transform 0.7s cubic-bezier(0.645, 0.045, 0.355, 1.000);
+  cursor: pointer;
+}
+
+.book-leaf-front,
+.book-leaf-back {
+  position: absolute;
+  inset: 0;
+  backface-visibility: hidden;
+  overflow: hidden;
+}
+
+.book-leaf-back {
+  transform: rotateY(180deg);
+}
+
+/* Fold shadow gradient overlay — gives depth during turn */
+.book-fold-shadow {
+  pointer-events: none;
+  position: absolute;
+  top: 0; bottom: 0;
+  width: 100%;
+  opacity: 0;
+  transition: opacity 0.35s ease;
+  background: linear-gradient(to right, rgba(0,0,0,0.18) 0%, transparent 60%);
+}
+
+.book-leaf.turning .book-fold-shadow {
+  opacity: 1;
+}
+
+@keyframes pageTurnIn {
+  from { transform: rotateY(-180deg); }
+  to   { transform: rotateY(0deg); }
+}
+
+@keyframes pageTurnOut {
+  from { transform: rotateY(0deg); }
+  to   { transform: rotateY(-180deg); }
+}
+
+/* ── True 3-D page-fold animations ── */
+/* Forward (next page): old page folds away to the left */
+@keyframes bookPageLeaveForward {
+  0%   { transform: perspective(1400px) rotateY(0deg); }
+  100% { transform: perspective(1400px) rotateY(-100deg); }
+}
+/* Backward (prev page): old page folds away to the right */
+@keyframes bookPageLeaveBack {
+  0%   { transform: perspective(1400px) rotateY(0deg); }
+  100% { transform: perspective(1400px) rotateY(100deg); }
+}
+
+/* Card hover lift */
+.card-hover {
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+.card-hover:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.08);
+}
+
+/* Orange glow on active */
+.glow-active {
+  box-shadow: 0 8px 30px rgba(255, 159, 28, 0.25);
+}
+
+/* Pill tag styles */
+.pill-tag {
+  transition: all 0.2s ease;
+}
+.pill-tag:hover {
+  transform: scale(1.05);
+}
+.pill-tag.active {
+  background-color: #FF9F1C;
+  color: #1E1B4B;
+  border-color: #FF9F1C;
+}
+
+/* Flipbook container */
+.flipbook-container {
+  perspective: 1200px;
+}
+
+.flipbook-page {
+  transition: transform 0.6s ease;
+  transform-style: preserve-3d;
+}
+
+/* Hero overlay */
+.hero-overlay {
+  background: linear-gradient(135deg, rgba(30, 27, 75, 0.75) 0%, rgba(55, 48, 163, 0.55) 100%);
+}
+
+/* Stagger animation delays */
+.stagger-1 { animation-delay: 0.1s; }
+.stagger-2 { animation-delay: 0.2s; }
+.stagger-3 { animation-delay: 0.3s; }
+.stagger-4 { animation-delay: 0.4s; }
+.stagger-5 { animation-delay: 0.5s; }
+.stagger-6 { animation-delay: 0.6s; }
+.stagger-7 { animation-delay: 0.7s; }
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #FDFBF7;
+}
+::-webkit-scrollbar-thumb {
+  background: #F3E8FF;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #FF9F1C;
+}

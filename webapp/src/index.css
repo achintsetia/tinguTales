@@ -1,0 +1,83 @@
+@import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@300..700&family=Nunito:wght@300..900&family=Noto+Sans+Devanagari:wght@400;500;600;700&family=Noto+Sans+Kannada:wght@400;500;600;700&family=Noto+Sans+Tamil:wght@400;500;600;700&family=Noto+Sans+Telugu:wght@400;500;600;700&family=Noto+Sans+Bengali:wght@400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 40 33% 98%;
+    --foreground: 243 61% 20%;
+    --card: 0 0% 100%;
+    --card-foreground: 243 61% 20%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 243 61% 20%;
+    --primary: 34 100% 55%;
+    --primary-foreground: 243 61% 20%;
+    --secondary: 244 72% 42%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 270 100% 97%;
+    --muted-foreground: 243 79% 53%;
+    --accent: 168 55% 39%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 15 75% 49%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 270 100% 95%;
+    --input: 270 100% 95%;
+    --ring: 34 100% 55%;
+    --chart-1: 34 100% 55%;
+    --chart-2: 168 55% 39%;
+    --chart-3: 244 72% 42%;
+    --chart-4: 15 75% 49%;
+    --chart-5: 243 61% 20%;
+    --radius: 0.75rem;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'Nunito', sans-serif;
+  }
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Fredoka', sans-serif;
+  }
+}
+
+@layer base {
+  [data-debug-wrapper="true"] {
+    display: contents !important;
+  }
+  [data-debug-wrapper="true"] > * {
+    margin-left: inherit;
+    margin-right: inherit;
+    margin-top: inherit;
+    margin-bottom: inherit;
+    padding-left: inherit;
+    padding-right: inherit;
+    padding-top: inherit;
+    padding-bottom: inherit;
+    column-gap: inherit;
+    row-gap: inherit;
+    gap: inherit;
+    border-left-width: inherit;
+    border-right-width: inherit;
+    border-top-width: inherit;
+    border-bottom-width: inherit;
+  }
+}
+
+/* Native script font families */
+.font-native {
+  font-family: 'Noto Sans Devanagari', 'Noto Sans Kannada', 'Noto Sans Tamil', 'Noto Sans Telugu', 'Noto Sans Bengali', 'Nunito', sans-serif;
+}
+
+.font-hindi { font-family: 'Noto Sans Devanagari', sans-serif; }
+.font-kannada { font-family: 'Noto Sans Kannada', sans-serif; }
+.font-tamil { font-family: 'Noto Sans Tamil', sans-serif; }
+.font-telugu { font-family: 'Noto Sans Telugu', sans-serif; }
+.font-bengali { font-family: 'Noto Sans Bengali', sans-serif; }
+.font-marathi { font-family: 'Noto Sans Devanagari', sans-serif; }
