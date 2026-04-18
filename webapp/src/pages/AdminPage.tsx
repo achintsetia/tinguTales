@@ -137,11 +137,38 @@ export default function AdminPage() {
     { id: "costs", label: "Costs" },
   ];
 
+  const toDateValue = (raw: any): Date | null => {
+    if (!raw) return null;
+    if (raw instanceof Date) return Number.isNaN(raw.getTime()) ? null : raw;
+    if (typeof raw?.toDate === "function") {
+      const d = raw.toDate();
+      return d instanceof Date && !Number.isNaN(d.getTime()) ? d : null;
+    }
+    if (typeof raw === "number") {
+      const d = new Date(raw);
+      return Number.isNaN(d.getTime()) ? null : d;
+    }
+    if (typeof raw === "string") {
+      const d = new Date(raw);
+      return Number.isNaN(d.getTime()) ? null : d;
+    }
+    if (typeof raw === "object" && typeof raw.seconds === "number") {
+      const d = new Date(raw.seconds * 1000);
+      return Number.isNaN(d.getTime()) ? null : d;
+    }
+    return null;
+  };
+
+  const toDisplayDate = (raw: any) => {
+    const d = toDateValue(raw);
+    return d ? d.toLocaleString("en-IN", {dateStyle: "short", timeStyle: "short"}) : "";
+  };
+
   const generatedStories = stories
     .filter((s: any) => s.status === "completed" || !!s.pdf_url)
     .sort((a: any, b: any) => {
-      const aTs = a.created_at ? new Date(a.created_at).getTime() : 0;
-      const bTs = b.created_at ? new Date(b.created_at).getTime() : 0;
+      const aTs = toDateValue(a.created_at)?.getTime() ?? 0;
+      const bTs = toDateValue(b.created_at)?.getTime() ?? 0;
       return bTs - aTs;
     });
 
@@ -670,7 +697,7 @@ export default function AdminPage() {
                         {userEmailById[s.user_id] || s.user_email || "Unknown user"}
                       </p>
                       <p className="text-xs text-[#1E1B4B]/40">
-                        {s.created_at ? new Date(s.created_at).toLocaleString("en-IN", { dateStyle: "short", timeStyle: "short" }) : ""}
+                        {toDisplayDate(s.created_at)}
                       </p>
                     </div>
                     {s.pdf_url ? (
@@ -814,7 +841,7 @@ export default function AdminPage() {
                       <p className="text-xs text-[#1E1B4B]/40 font-mono truncate">{p.order_id}</p>
                     </div>
                     <span className="text-xs text-[#1E1B4B]/30">
-                      {p.created_at ? new Date(p.created_at).toLocaleString("en-IN", { dateStyle: "short", timeStyle: "short" }) : ""}
+                      {toDisplayDate(p.created_at)}
                     </span>
                     {p.status === "paid" && (
                       <Button

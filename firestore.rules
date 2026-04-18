@@ -84,6 +84,11 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // Discount coupons — only admins can read/write from frontend admin panel
+    match /discount_coupons/{couponId} {
+      allow read, write: if isAdmin();
+    }
+
     // All other collections are locked down by default
     match /{document=**} {
       allow read, write: if false;

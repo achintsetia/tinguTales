@@ -19,3 +19,9 @@ export {enqueuePageImageTask, processPageImage} from "./pageImageQueue.js";
 export {generateStorybookPdf} from "./pdfGeneration.js";
 export {getAdminCostReport} from "./getAdminCostReport.js";
 export {adminRetryPageImage, adminRetryPdf} from "./adminRetryTasks.js";
+export {redeemDiscountCoupon} from "./discountCoupons.js";
+export {
+  createStoryPaymentOrder,
+  verifyStoryPayment,
+  markStoryPaymentFailed,
+} from "./storyPayments.js";
