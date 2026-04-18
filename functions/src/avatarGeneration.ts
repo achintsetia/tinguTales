@@ -3,6 +3,7 @@ import {bucket, db} from "./admin.js";
 import {GoogleGenAI} from "@google/genai";
 import sharp from "sharp";
 import {v4 as uuidv4} from "uuid";
+import {recordTokenConsumption} from "./tokenConsumption.js";
 
 /**
  * Upload a buffer to Storage with a download token, return the public Firebase download URL.
@@ -87,7 +88,9 @@ export async function generateAvatar(
     "- Use warm, vibrant colors (marigold, teal, indigo accents)\n" +
     "- Have a clean circular portrait composition\n" +
     "- Indian cultural style, cheerful and magical\n" +
-    `The child's name is ${name}. Make them look like a storybook hero!`;
+    `The child's name is ${name}. Make them look like a storybook hero!\n` +
+    `IMPORTANT: The output image must contain ONLY the cartoon avatar of the child and the child's name "${name}" written below the avatar. ` +
+    "Do NOT include any other text, labels, captions, watermarks, or decorative words anywhere in the image.";
 
   logger.info(`[generateAvatar] calling Gemini generateContent (model=${modelName})`);
   const response = await ai.models.generateContent({
@@ -109,6 +112,16 @@ export async function generateAvatar(
     },
   });
   logger.info(`[generateAvatar] Gemini response received — candidates=${response.candidates?.length ?? 0}`);
+
+  // Record Gemini token consumption (fire-and-forget)
+  const usage = response.usageMetadata;
+  if (usage) {
+    const totalTokens = usage.totalTokenCount ?? 0;
+    void recordTokenConsumption(userId, "avatar_generation", "gemini", totalTokens, {
+      input_tokens: usage.promptTokenCount ?? 0,
+      output_tokens: usage.candidatesTokenCount ?? 0,
+    });
+  }
 
   let avatarPng: Buffer | null = null;
   for (const part of response.candidates?.[0]?.content?.parts ?? []) {

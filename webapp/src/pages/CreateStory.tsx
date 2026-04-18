@@ -158,6 +158,22 @@ const STORY_TEMPLATES = [
   { id: "bn-rabindranath", title: "Rabindranath's Tales", desc: "Stories inspired by Tagore — the postmaster, Kabuliwala and the child's world", interests: ["folklore", "wisdom", "kindness", "nature"], ageMin: 5, ageMax: 10, color: "#3730A3", icon: Drama, category: "cultural", langs: ["bn"] },
   { id: "bn-luchi-alur-dom", title: "Festival Feast", desc: "Making luchi, alur dom and payesh with the family on a festive morning", interests: ["cooking", "festivals", "friendship", "village-life"], ageMin: 3, ageMax: 7, color: "#E76F51", icon: ChefHat, category: "cultural", langs: ["bn"] },
 
+  // -- Gujarati / Gujarat (gu) --
+  { id: "gu-navratri", title: "Navratri Garba Night", desc: "Nine nights of Garba in Gujarat — colorful chaniya choli, dandiya sticks and devotion to Goddess Amba", interests: ["festivals", "music", "mythology", "art"], ageMin: 3, ageMax: 8, color: "#E76F51", icon: Music, category: "cultural", langs: ["gu"] },
+  { id: "gu-uttarayan", title: "Uttarayan — Kite Festival", desc: "The sky fills with kites on Makar Sankranti — Cut! Kaapo che! and rooftop celebrations all day", interests: ["festivals", "friendship", "harvest", "courage"], ageMin: 3, ageMax: 8, color: "#FF9F1C", icon: Sun, category: "cultural", langs: ["gu"] },
+  { id: "gu-makar-sankranti", title: "Tal Sankli & Undhiyu", desc: "Making sesame sweets and the famous Gujarati undhiyu feast on Sankranti morning", interests: ["festivals", "cooking", "family", "village-life"], ageMin: 3, ageMax: 7, color: "#2A9D8F", icon: ChefHat, category: "cultural", langs: ["gu"] },
+  { id: "gu-janmashtami", title: "Dahi Handi in Gujarat", desc: "Building a human pyramid to break the dahi handi — celebrating Krishna Janmashtami", interests: ["mythology", "festivals", "courage", "friendship"], ageMin: 4, ageMax: 8, color: "#3730A3", icon: Star, category: "cultural", langs: ["gu"] },
+  { id: "gu-rann-of-kutch", title: "The White Desert Adventure", desc: "A magical journey to the Rann of Kutch — white salt desert, full moon and Kutchi crafts", interests: ["nature", "folklore", "rivers-mountains", "art"], ageMin: 5, ageMax: 10, color: "#2A9D8F", icon: Mountain, category: "cultural", langs: ["gu"] },
+  { id: "gu-bestu-varas", title: "Diwali & Bestu Varas", desc: "Gujarati New Year — lighting diyas, business books puja and Annakut feast of 108 dishes", interests: ["festivals", "diwali", "cooking", "mythology"], ageMin: 3, ageMax: 8, color: "#FF9F1C", icon: Lamp, category: "cultural", langs: ["gu"] },
+
+  // -- Malayalam / Kerala (ml) --
+  { id: "ml-onam", title: "Onam Harvest Home", desc: "Pookalam flower carpet, Onasadya feast and the legend of King Mahabali coming back to Kerala", interests: ["harvest", "festivals", "cooking", "mythology"], ageMin: 3, ageMax: 8, color: "#2A9D8F", icon: Sun, category: "cultural", langs: ["ml"] },
+  { id: "ml-vishu", title: "Vishu Kani & Crackers", desc: "Waking at dawn to see Vishu Kani — gold, rice, flowers and new beginnings in Kerala", interests: ["festivals", "nature", "mythology", "cooking"], ageMin: 3, ageMax: 8, color: "#FF9F1C", icon: Star, category: "cultural", langs: ["ml"] },
+  { id: "ml-thrissur-pooram", title: "Thrissur Pooram", desc: "Elephants in glittering decorations, parasol exchanges and fireworks at the world's greatest festival", interests: ["festivals", "animals", "music", "mythology"], ageMin: 4, ageMax: 10, color: "#E76F51", icon: Flame, category: "cultural", langs: ["ml"] },
+  { id: "ml-kathakali", title: "The Kathakali Dancer", desc: "A child learns Kathakali — the green face paint, expressive eyes and Mahabharata stories", interests: ["music", "mythology", "art", "folklore"], ageMin: 5, ageMax: 10, color: "#3730A3", icon: Drama, category: "cultural", langs: ["ml"] },
+  { id: "ml-boat-race", title: "Nehru Trophy Snake Boat", desc: "Riding the famous snake boat in Alappuzha backwaters — the oarsmen chant Vanchipattu!", interests: ["festivals", "courage", "rivers-mountains", "village-life"], ageMin: 4, ageMax: 10, color: "#2A9D8F", icon: Fish, category: "cultural", langs: ["ml"] },
+  { id: "ml-theyyam", title: "The Theyyam Spirit", desc: "A colourful Theyyam ritual in the village — half god, half human and full of wonder", interests: ["mythology", "folklore", "village-life", "courage"], ageMin: 5, ageMax: 10, color: "#E76F51", icon: Flame, category: "cultural", langs: ["ml"] },
+
   // -- Panchatantra & Folklore --
   { id: "pancha-monkey-crocodile", title: "The Clever Monkey", desc: "Panchatantra: A smart monkey outwits a crocodile on the river", interests: ["folklore", "animals", "wisdom", "courage"], ageMin: 3, ageMax: 7, color: "#2A9D8F", icon: BookHeart, category: "cultural" },
   { id: "pancha-crow-pitcher", title: "The Thirsty Crow", desc: "Panchatantra: A clever crow finds a way to drink water from a tall pitcher", interests: ["folklore", "animals", "wisdom"], ageMin: 2, ageMax: 5, color: "#3730A3", icon: Feather, category: "cultural" },
@@ -300,13 +316,17 @@ export default function CreateStory() {
     const transliterate = async () => {
       setTransliterating(true);
       try {
-        const res = await axios.post(`${API}/transliterate`, {
+        const transliterateFn = httpsCallable<
+          {name: string; languageCode: string},
+          {transliterated: string; languageCode: string}
+        >(functions, "transliterateChildName");
+        const result = await transliterateFn({
           name: selectedProfile.name,
-          language_code: selectedLang.code,
-          language_name: selectedLang.name,
+          languageCode: selectedLang.code,
         });
-        if (res.data.transliterated && res.data.transliterated !== selectedProfile.name) {
-          setNativeChildName(res.data.transliterated);
+        const transliterated = result.data.transliterated;
+        if (transliterated && transliterated !== selectedProfile.name) {
+          setNativeChildName(transliterated);
           setTransliterationDone(true);
         }
       } catch (e) {
@@ -779,6 +799,31 @@ export default function CreateStory() {
           ))}
         </div>
 
+        {/* Back / Next — sticky below progress bar */}
+        {step < 5 && (
+          <div className="sticky top-[69px] z-40 -mx-6 px-6 py-3 mb-6 bg-[#FDFBF7]/90 backdrop-blur-md border-b border-[#F3E8FF] flex items-center justify-between">
+            <Button
+              data-testid="btn-step-back"
+              variant="ghost"
+              onClick={() => setStep((s) => Math.max(1, s - 1))}
+              disabled={step === 1 || approving}
+              className="rounded-full text-[#1E1B4B]/60 hover:text-[#1E1B4B] disabled:opacity-30 h-9 px-4 text-sm"
+            >
+              <ArrowLeft className="w-4 h-4 mr-1.5" strokeWidth={2.5} />
+              Back
+            </Button>
+            <Button
+              data-testid="btn-step-next"
+              onClick={() => setStep((s) => Math.min(5, s + 1))}
+              disabled={!canProceed()}
+              className="rounded-full bg-[#FF9F1C] hover:bg-[#E88A12] text-[#1E1B4B] font-bold px-6 h-9 text-sm disabled:opacity-30"
+            >
+              Next
+              <ArrowRight className="w-4 h-4 ml-1.5" strokeWidth={2.5} />
+            </Button>
+          </div>
+        )}
+
         {/* Step 1: Select Child Profile */}
         {step === 1 && (
           <div className="animate-fade-in-up" data-testid="step-select-profile">
@@ -1005,29 +1050,17 @@ export default function CreateStory() {
         {/* Step 2: Select Language */}
         {step === 2 && (
           <div className="animate-fade-in-up" data-testid="step-select-language">
-            <div className="text-center mb-8">
-              {/* Hero avatar */}
-              {selectedProfile?.avatar_jpeg_url && (
-                <div className="flex flex-col items-center mb-6">
-                  <div className="w-40 h-40 rounded-full overflow-hidden border-4 border-[#FF9F1C] shadow-xl">
-                    <BlurImage
-                      src={selectedProfile.avatar_jpeg_url}
-                      alt={selectedProfile.name}
-                      className="w-full h-full object-cover"
-                    />
-                  </div>
-                  <p className="mt-3 text-xl font-bold text-[#1E1B4B]" style={{ fontFamily: "Fredoka" }}>
-                    {selectedProfile.name}
-                  </p>
-                  <p className="text-sm text-[#2A9D8F] font-medium">is ready for their adventure!</p>
-                </div>
-              )}
+
+            {/* Title */}
+            <div className="text-center mb-6">
               <h2 className="text-2xl sm:text-3xl tracking-tight font-medium text-[#1E1B4B]" style={{ fontFamily: "Fredoka" }}>
                 Choose a language
               </h2>
-              <p className="text-[#1E1B4B]/60 mt-2">The story will be written natively in this language</p>
+              <p className="text-[#1E1B4B]/60 mt-1 text-sm">The story will be written natively in this language</p>
             </div>
-            <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
+
+            {/* Language grid */}
+            <div className="grid grid-cols-3 sm:grid-cols-4 gap-3 mb-6">
               {LANGUAGES.map((lang) => (
                 <Card
                   key={lang.code}
@@ -1052,64 +1085,101 @@ export default function CreateStory() {
               ))}
             </div>
 
-            {selectedLang && selectedLang.code !== "en" && (
-              <div className="mt-8 max-w-md mx-auto">
-                <div className="rounded-2xl border-2 border-[#F3E8FF] bg-white p-5">
-                  <div className="flex items-center gap-2 mb-3">
-                    <Globe className="w-4 h-4 text-[#3730A3]" strokeWidth={2.5} />
-                    <span className="text-sm font-semibold text-[#1E1B4B]">
-                      Child&apos;s name in {selectedLang.name}
-                    </span>
-                    {transliterating && (
-                      <span className="inline-flex items-center gap-1 text-xs text-[#FF9F1C] font-medium animate-pulse">
-                        <Sparkles className="w-3 h-3" strokeWidth={2.5} />
-                        Transliterating...
-                      </span>
-                    )}
-                    {transliterationDone && !transliterating && (
-                      <span className="inline-flex items-center gap-1 text-xs text-[#2A9D8F] font-medium">
-                        <Check className="w-3 h-3" strokeWidth={3} />
-                        AI suggested
-                      </span>
-                    )}
-                  </div>
-
-                  <div className="flex items-center gap-3">
-                    <div className="flex-1 relative">
-                      <Input
-                        data-testid="input-native-child-name"
-                        value={nativeChildName}
-                        onChange={(e) => { setNativeChildName(e.target.value); setTransliterationDone(false); }}
-                        placeholder={transliterating ? "Transliterating..." : `${selectedProfile?.name || "Name"} in ${selectedLang.name}`}
-                        disabled={transliterating}
-                        className={`rounded-xl border-2 border-[#F3E8FF] focus:border-[#FF9F1C] h-14 text-center text-xl ${selectedLang.font} ${
-                          transliterating ? "animate-pulse bg-[#F3E8FF]/50" : "bg-[#FDFBF7]"
-                        }`}
-                      />
+            {/* ── Native name preview — shown as soon as a language is selected ── */}
+            {selectedLang && (
+              <div className="max-w-md mx-auto">
+                {selectedLang.code === "en" ? (
+                  /* English: just a confirmation pill */
+                  <div className="flex items-center justify-center gap-3 p-5 rounded-3xl bg-[#F3E8FF]/60 border-2 border-[#FF9F1C]/30">
+                    <div className="w-14 h-14 rounded-full overflow-hidden border-2 border-[#FF9F1C] flex-shrink-0">
+                      {selectedProfile?.avatar_jpeg_url ? (
+                        <BlurImage src={selectedProfile.avatar_jpeg_url} alt={selectedProfile.name} className="w-full h-full object-cover" />
+                      ) : (
+                        <div className="w-full h-full bg-[#FF9F1C]/10 flex items-center justify-center">
+                          <span className="text-lg font-bold text-[#FF9F1C]">{selectedProfile?.name?.[0]}</span>
+                        </div>
+                      )}
+                    </div>
+                    <div>
+                      <p className="text-2xl font-bold text-[#1E1B4B]" style={{ fontFamily: "Fredoka" }}>
+                        {selectedProfile?.name}
+                      </p>
+                      <p className="text-xs text-[#2A9D8F] font-semibold mt-0.5">Story will be in English ✓</p>
                     </div>
                   </div>
-
-                  {nativeChildName && (
-                    <div className="mt-3 flex items-center justify-center gap-2">
-                      <span className="text-sm text-[#1E1B4B]/50">{selectedProfile?.name}</span>
-                      <ArrowRight className="w-3 h-3 text-[#1E1B4B]/30" strokeWidth={2} />
-                      <span className={`text-sm font-semibold text-[#3730A3] ${selectedLang.font}`}>
-                        {nativeChildName}
-                      </span>
+                ) : (
+                  /* Non-English: big native name preview + edit field */
+                  <div className="rounded-3xl border-2 border-[#FF9F1C]/40 bg-white overflow-hidden">
+                    {/* Big preview strip */}
+                    <div className="bg-gradient-to-r from-[#FF9F1C]/10 to-[#3730A3]/10 px-6 py-5 flex items-center gap-4">
+                      {/* Avatar */}
+                      <div className="w-16 h-16 rounded-full overflow-hidden border-2 border-[#FF9F1C] flex-shrink-0">
+                        {selectedProfile?.avatar_jpeg_url ? (
+                          <BlurImage src={selectedProfile.avatar_jpeg_url} alt={selectedProfile.name} className="w-full h-full object-cover" />
+                        ) : (
+                          <div className="w-full h-full bg-[#FF9F1C]/10 flex items-center justify-center">
+                            <span className="text-xl font-bold text-[#FF9F1C]">{selectedProfile?.name?.[0]}</span>
+                          </div>
+                        )}
+                      </div>
+                      {/* Name in native script — the KEY info */}
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-semibold text-[#1E1B4B]/40 uppercase tracking-wider mb-0.5">
+                          {selectedProfile?.name} in {selectedLang.name}
+                        </p>
+                        {transliterating ? (
+                          <div className="flex items-center gap-2">
+                            <Sparkles className="w-4 h-4 text-[#FF9F1C] animate-spin flex-shrink-0" strokeWidth={2} />
+                            <span className="text-lg text-[#FF9F1C] font-medium animate-pulse">Transliterating…</span>
+                          </div>
+                        ) : nativeChildName ? (
+                          <p className={`text-3xl font-bold text-[#1E1B4B] leading-tight ${selectedLang.font}`}>
+                            {nativeChildName}
+                          </p>
+                        ) : (
+                          <p className="text-lg text-[#1E1B4B]/30 italic">Type name below…</p>
+                        )}
+                        {transliterationDone && !transliterating && (
+                          <span className="inline-flex items-center gap-1 text-[10px] text-[#2A9D8F] font-semibold mt-1">
+                            <Check className="w-3 h-3" strokeWidth={3} />
+                            AI suggested — please verify
+                          </span>
+                        )}
+                      </div>
                     </div>
-                  )}
 
-                  <div className="mt-3 flex items-start gap-2 p-2.5 rounded-xl bg-[#FF9F1C]/5 border border-[#FF9F1C]/20">
-                    <Sparkles className="w-4 h-4 text-[#FF9F1C] flex-shrink-0 mt-0.5" strokeWidth={2} />
-                    <p className="text-xs text-[#1E1B4B]/60 leading-relaxed">
-                      {transliterationDone
-                        ? "Please review — the AI transliterated your child's name. Edit if the spelling is incorrect."
-                        : "Enter your child's name in native script. This will be used in the story."
-                      }
-                      {" "}Leave blank to use the English name.
-                    </p>
+                    {/* Edit field */}
+                    <div className="px-5 py-4">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Globe className="w-3.5 h-3.5 text-[#3730A3]" strokeWidth={2.5} />
+                        <span className="text-xs font-semibold text-[#1E1B4B]/70">
+                          Edit native script name
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <div className="flex-1 relative">
+                          <Input
+                            data-testid="input-native-child-name"
+                            value={nativeChildName}
+                            onChange={(e) => { setNativeChildName(e.target.value); setTransliterationDone(false); }}
+                            placeholder={transliterating ? "Transliterating..." : `${selectedProfile?.name || "Name"} in ${selectedLang.name}`}
+                            disabled={transliterating}
+                            className={`rounded-xl border-2 border-[#F3E8FF] focus:border-[#FF9F1C] h-12 text-center text-lg ${selectedLang.font} ${
+                              transliterating ? "animate-pulse bg-[#F3E8FF]/50" : "bg-[#FDFBF7]"
+                            }`}
+                          />
+                        </div>
+                      </div>
+                      {/* Tip */}
+                      <p className="text-xs text-[#1E1B4B]/40 mt-3 leading-relaxed">
+                        {transliterationDone
+                          ? "AI suggested — please review and edit if needed. Leave blank to use the English name."
+                          : "Enter your child's name in native script. Leave blank to use the English name."
+                        }
+                      </p>
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
             )}
           </div>
@@ -1673,30 +1743,8 @@ export default function CreateStory() {
           </div>
         )}
 
-        {/* Navigation */}
-        <div className="flex items-center justify-between mt-12 pt-6 border-t border-[#F3E8FF]">
-          <Button
-            data-testid="btn-step-back"
-            variant="ghost"
-            onClick={() => setStep((s) => Math.max(1, s - 1))}
-            disabled={step === 1 || approving}
-            className="rounded-full text-[#1E1B4B]/60 hover:text-[#1E1B4B] disabled:opacity-30"
-          >
-            <ArrowLeft className="w-4 h-4 mr-2" strokeWidth={2.5} />
-            Back
-          </Button>
-          {step < 5 && (
-            <Button
-              data-testid="btn-step-next"
-              onClick={() => setStep((s) => Math.min(5, s + 1))}
-              disabled={!canProceed()}
-              className="rounded-full bg-[#FF9F1C] hover:bg-[#E88A12] text-[#1E1B4B] font-bold px-8 min-h-[48px] disabled:opacity-30"
-            >
-              Next
-              <ArrowRight className="w-4 h-4 ml-2" strokeWidth={2.5} />
-            </Button>
-          )}
-        </div>
+        {/* bottom spacer so last card isn't hidden under nothing */}
+        <div className="h-8" />
       </div>
     </div>
   );
