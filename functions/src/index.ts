@@ -20,6 +20,7 @@ export {generateStorybookPdf} from "./pdfGeneration.js";
 export {getAdminCostReport} from "./getAdminCostReport.js";
 export {adminRetryPageImage, adminRetryPdf} from "./adminRetryTasks.js";
 export {redeemDiscountCoupon} from "./discountCoupons.js";
+export {deleteStory} from "./deleteStory.js";
 export {
   createStoryPaymentOrder,
   verifyStoryPayment,

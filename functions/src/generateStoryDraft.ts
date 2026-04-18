@@ -243,10 +243,17 @@ async function planStory(
   const beats = storyBeats(storyPageCount);
 
   const incidentInstruction = customIncident ?
-    `\n\nSPECIAL MOMENT TO WEAVE IN: The child experienced this today — "${customIncident}"\n` +
-    "Build the story arc so that this moment is the central challenge or inciting event.\n" +
-    "Resolve it constructively: show resilience, learning, or kindness so the child feels\n" +
-    "validated and empowered by the end. Keep it age-appropriate and emotionally warm." :
+    `\n\nPERSONAL CONTEXT — HIGHEST PRIORITY: "${customIncident}"\n` +
+    "Parse this carefully. It may contain:\n" +
+    "  • The child's favourite things (animals, vehicles, toys, foods, places, characters)\n" +
+    "  • Names of real pets, friends, or objects the child loves\n" +
+    "  • A real event, adventure, or moment from the child's life\n" +
+    "Use ALL of this as primary story material:\n" +
+    "  1. Favourite objects/animals/vehicles MUST appear as main props, characters, or settings.\n" +
+    "  2. Named pets or friends MUST be featured by name as real companions in the story.\n" +
+    "  3. Real events MUST be the central challenge or inciting incident.\n" +
+    "The story should feel like it was written specifically for this child — they should\n" +
+    "immediately recognise their world in it. Do NOT reduce this to a passing mention." :
     "";
 
   const templateInstruction = templateTitle ?
@@ -267,7 +274,8 @@ async function planStory(
   const prompt =
     "Create a story outline for a personalized children's storybook.\n\n" +
     `Child: ${childName}, Age: ${childAge}\n` +
-    `Themes/Interests: ${themes.join(", ")}\n` +
+    `General Themes/Interests: ${themes.join(", ")}\n` +
+    (customIncident ? `Child's Personal Context (HIGHEST PRIORITY — see full instructions below): "${customIncident}"\n` : "") +
     `Target Language: ${languageName} (${languageCode})\n` +
     `AGE-APPROPRIATE LANGUAGE REQUIREMENT:\n${writingGuide}\n` +
     "Every page description MUST note the vocabulary level so the writer follows it exactly.\n\n" +
@@ -376,10 +384,16 @@ async function writeStory(
     "\n]";
 
   const incidentNote = customIncident ?
-    `\n\nIMPORTANT — A real moment to honour: "${customIncident}"\n` +
-    "Weave this into the story naturally. It should be the central challenge or\n" +
-    "inciting event. Resolve it with warmth and encouragement so the child feels\n" +
-    "brave, resilient, or proud. Keep the tone gentle and empowering." :
+    `\n\nPERSONAL CONTEXT — MANDATORY (read carefully): "${customIncident}"\n` +
+    "This contains real details from the child's life. Extract and use ALL of them:\n" +
+    "  • Favourite animals → if a named pet is mentioned, that pet MUST appear by name\n" +
+    "    as an active companion character (talks, helps, goes on the adventure with the child).\n" +
+    "  • Favourite vehicles/objects/toys → these MUST be prominent props or the adventure setting\n" +
+    "    (e.g. if JCB excavator is mentioned, the child rides or works alongside a JCB).\n" +
+    "  • Real events or incidents → these MUST drive the plot as the central challenge.\n" +
+    "Do NOT reduce any of these to a single passing sentence. Each one must play a\n" +
+    "meaningful role across multiple pages. The child should open the book and immediately\n" +
+    "see their own world — their pet, their favourite thing — as the heart of the story." :
     "";
 
   const lessonPhrase = outline.lessonPhrase ||
@@ -388,6 +402,7 @@ async function writeStory(
   const prompt =
     `Write a complete children's storybook natively in ${languageName}.\n\n` +
     `Child: ${childName}, Age: ${childAge}\n` +
+    (customIncident ? `Child's Personal Context (HIGHEST PRIORITY): "${customIncident}"\n` : "") +
     `Moral / Lesson: ${outline.moral}\n\n` +
     `AGE-APPROPRIATE LANGUAGE REQUIREMENT (MANDATORY):\n${writingGuide}\n` +
     "Every page MUST strictly follow the sentence count, word length, and vocabulary level above.\n\n" +
@@ -398,8 +413,8 @@ async function writeStory(
     `Climax page: ${childName} applies the lesson and it works — small triumph!\n` +
     "Throughout: weave the learning theme into actions, dialogue and small details.\n\n" +
     "COVER, BACK COVER & BRANDING RULES:\n" +
-    "- Page 0 (Front Cover): Title text = story title. Below it, a short tagline (max 8 words) that\n" +
-    `  names ${childName} and hints at the adventure. Example: "${childName} and the Magic Garden".\n` +
+    "- Page 0 (Front Cover): Show only the story title and the story subtitle on the cover.\n" +
+    "  Do not add any other cover text, tagline, author name, badge, caption, quote, logo, or extra copy.\n" +
     `- Page ${numPages - 1} (Back Cover): MUST be in English only. Start with "${lessonPhrase}". Then 1-2 warm sentences inviting the reader to try the lesson too. Include the exact name "${childEnglishName}" at least once.\n\n` +
     "Story Outline:\n" +
     `Title: ${outline.title}\n` +

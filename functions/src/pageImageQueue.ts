@@ -25,6 +25,7 @@ interface PageImageTaskPayload {
   userId: string;
   avatarUrl: string; // GCS path, e.g. userId/profileId/avatar/avatar.jpg
   characterCardJson: string;
+  supportingCharactersJson: string; // JSON array of SupportingCharacter
   totalPages: number;
 }
 
@@ -72,6 +73,15 @@ function buildIllustrationPrompt(
     }
   })();
 
+  const supportingChars: Array<{name: string; role: string; appearance: string}> = (() => {
+    try {
+      const parsed = JSON.parse(payload.supportingCharactersJson);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  })();
+
   const characterDesc = card ? (
     `The protagonist is a ${card.gender || "child"} with ${card.skin_tone} skin tone. ` +
     `Face: ${card.face}. Hair: ${card.hair}. ` +
@@ -81,19 +91,28 @@ function buildIllustrationPrompt(
     "the avatar reference in colour, style, and pattern on every single page."
   ) : "";
 
+  const supportingCharDesc = supportingChars.length > 0 ?
+    "SUPPORTING CHARACTERS — draw each with their exact consistent appearance whenever they appear in this scene: " +
+    supportingChars.map((sc) => `${sc.name} (${sc.role}): ${sc.appearance}`).join(" | ") +
+    " CRITICAL: Never change the appearance of any supporting character between pages. " :
+    "";
+
   if (payload.pageType === "cover") {
     const title = payload.coverTitle || "";
     const subtitle = payload.coverSubtitle || "";
     return (
       "Create a beautiful children's storybook COVER illustration in a warm, vibrant Indian style. " +
       `${characterDesc} ` +
+      `${supportingCharDesc}` +
       `Scene: ${payload.scenePrompt} ` +
       "Make it feel magical, joyful, and inviting. Full 3:4 portrait format. " +
       (title ? (
         `IMPORTANT: Render the book title "${title}" prominently in the illustration — ` +
         "large decorative lettering, centered, near the top or bottom of the image. " +
         (subtitle ? `Also render the subtitle "${subtitle}" in smaller text just below the title. ` : "") +
-        "The text must be clearly legible and styled as an official book cover title."
+        "The text must be clearly legible and styled as an official book cover title. " +
+        "Do not render any other text anywhere on the cover besides the title and subtitle. " +
+        "No author names, logos, badges, captions, quotes, page numbers, or extra wording."
       ) : "")
     );
   }
@@ -127,6 +146,7 @@ function buildIllustrationPrompt(
   return (
     "Create a vibrant children's storybook interior PAGE illustration in warm Indian style. " +
     `${characterDesc} ` +
+    `${supportingCharDesc}` +
     `Scene: ${payload.scenePrompt} ` +
     "Full 3:4 portrait format, bright and joyful colours. " +
     (storyText ? (
@@ -216,6 +236,7 @@ export const enqueuePageImageTask = onDocumentCreated(
     const profileId: string = story.profile_id ?? "";
     const avatarUrl = `${userId}/${profileId}/avatar/avatar.jpg`;
     const characterCardJson = JSON.stringify(story.character_card ?? {});
+    const supportingCharactersJson = JSON.stringify(story.supporting_characters ?? []);
     const totalPages: number = story.page_count ?? 8;
 
     const payload: PageImageTaskPayload = {
@@ -230,6 +251,7 @@ export const enqueuePageImageTask = onDocumentCreated(
       userId,
       avatarUrl,
       characterCardJson,
+      supportingCharactersJson,
       totalPages,
     };
 

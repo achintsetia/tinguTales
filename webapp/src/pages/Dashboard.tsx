@@ -493,6 +493,24 @@ export default function Dashboard() {
                                 <Trash2 className="w-3.5 h-3.5" strokeWidth={2} />
                               </Button>
                             </div>
+                            {(story.language || story.created_at) && (
+                              <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                                {story.language && (
+                                  <span className="text-[10px] text-[#3730A3]/60 bg-[#3730A3]/8 rounded-full px-2 py-0.5 truncate max-w-[90px]">
+                                    {story.language}
+                                  </span>
+                                )}
+                                {story.created_at && (
+                                  <span className="text-[10px] text-[#1E1B4B]/35 flex items-center gap-0.5">
+                                    <Clock className="w-2.5 h-2.5" strokeWidth={2} />
+                                    {(() => {
+                                      const d = story.created_at?.toDate?.() ?? new Date(story.created_at);
+                                      return isNaN(d.getTime()) ? "" : d.toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+                                    })()}
+                                  </span>
+                                )}
+                              </div>
+                            )}
                           </CardContent>
                         </Card>
                       );

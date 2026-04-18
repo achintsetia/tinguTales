@@ -15,7 +15,7 @@ service cloud.firestore {
     // Child profiles — users can only access their own
     match /child_profiles/{profileId} {
       allow read, update, delete: if request.auth != null
-        && resource.data.user_id == request.auth.uid;
+        && (resource.data.user_id == request.auth.uid || isAdmin());
       allow create: if request.auth != null
         && request.resource.data.user_id == request.auth.uid;
     }

@@ -695,6 +695,17 @@ export default function CreateStory() {
     }
   };
 
+  const truncateFileName = (fileName: string, maxLength = 28) => {
+    if (!fileName || fileName.length <= maxLength) return fileName;
+    const extIndex = fileName.lastIndexOf(".");
+    const hasExt = extIndex > 0 && extIndex < fileName.length - 1;
+    const ext = hasExt ? fileName.slice(extIndex) : "";
+    const base = hasExt ? fileName.slice(0, extIndex) : fileName;
+
+    const keepBase = Math.max(8, maxLength - ext.length - 3);
+    return `${base.slice(0, keepBase)}...${ext}`;
+  };
+
   // ── Draft flow ──────────────────────────────────────────────────────────
   const handleGenerateDraft = async () => {
     if (isWhitelisted === false) {
@@ -827,9 +838,16 @@ export default function CreateStory() {
         return;
       }
 
-      if (!window.Razorpay || !razorpayLoaded) {
-        toast.error("Payment UI failed to load. Please refresh and try again.");
-        return;
+      if (!window.Razorpay) {
+        // Try waiting up to 5s for the script to finish loading
+        await new Promise<void>((resolve, reject) => {
+          let waited = 0;
+          const interval = setInterval(() => {
+            if (window.Razorpay) { clearInterval(interval); resolve(); }
+            waited += 200;
+            if (waited >= 5000) { clearInterval(interval); reject(new Error("Payment UI failed to load. Please refresh and try again.")); }
+          }, 200);
+        });
       }
 
       const verifyPaymentFn = httpsCallable<
@@ -1068,7 +1086,7 @@ export default function CreateStory() {
       </Dialog>
 
       {/* Story-approval and payment dialog */}
-      <Dialog open={showApproveWarning} onOpenChange={setShowApproveWarning}>
+      <Dialog open={showApproveWarning} onOpenChange={(open) => { if (!checkoutLoading && !approving) setShowApproveWarning(open); }}>
         <DialogContent className="rounded-3xl border-2 border-[#F3E8FF] max-w-md">
           <DialogHeader>
             <DialogTitle style={{ fontFamily: "Fredoka" }} className="text-[#1E1B4B] text-xl">
@@ -1129,19 +1147,14 @@ export default function CreateStory() {
               className="flex-1 rounded-full bg-[#FF9F1C] hover:bg-[#E88A12] text-[#1E1B4B] font-bold"
               disabled={checkoutLoading || approving}
               onClick={() => {
-                if (paymentsEnabled) {
-                  handlePaidApprove();
-                  return;
-                }
-                setShowApproveWarning(false);
-                handleApprove();
+                handlePaidApprove();
               }}
             >
               {checkoutLoading
                 ? "Starting checkout..."
                 : paymentsEnabled
                 ? "Proceed to Pay"
-                : "Yes, Start Creating"}
+                : "Continue"}
             </Button>
           </div>
         </DialogContent>
@@ -1436,8 +1449,13 @@ export default function CreateStory() {
                           data-testid="photo-preview"
                           className="w-16 h-16 rounded-2xl object-cover"
                         />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-[#1E1B4B] truncate">{photoFile?.name}</p>
+                        <div className="flex-1 min-w-0 w-0 overflow-hidden">
+                          <p
+                            className="text-sm font-medium text-[#1E1B4B] truncate"
+                            title={photoFile?.name || ""}
+                          >
+                            {photoFile?.name ? truncateFileName(photoFile.name) : ""}
+                          </p>
                           <p className="text-xs text-[#2A9D8F]">
                             <Sparkles className="w-3 h-3 inline mr-1" strokeWidth={2.5} />
                             Avatar will be generated from this photo
@@ -1972,7 +1990,7 @@ export default function CreateStory() {
                   <h2 className="text-2xl sm:text-3xl tracking-tight font-medium text-[#1E1B4B]" style={{ fontFamily: "Fredoka" }}>
                     Writing your story...
                   </h2>
-                  <p className="text-[#1E1B4B]/50 mt-1 text-sm">This usually takes 1–2 minutes</p>
+                  <p className="text-[#1E1B4B]/50 mt-1 text-sm">This usually takes 10-15 minutes. Sit tight!</p>
                 </div>
 
                 {/* Step progress (single active step to save space) */}

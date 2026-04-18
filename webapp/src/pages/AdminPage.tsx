@@ -12,7 +12,7 @@ import { Switch } from "../components/ui/switch";
 import { Input } from "../components/ui/input";
 import {
   ArrowLeft, Trash2, RefreshCw, DollarSign, Users, BookOpen,
-  Activity, Undo2, Bot, ChevronDown, ChevronUp, IndianRupee
+  Activity, Undo2, Bot, ChevronDown, ChevronUp, IndianRupee, User, Baby, Search
 } from "lucide-react";
 
 export default function AdminPage() {
@@ -24,8 +24,7 @@ export default function AdminPage() {
   const [userEmailById, setUserEmailById] = useState<Record<string, string>>({});
   const [tab, setTab] = useState("overview");
   const [loading, setLoading] = useState(true);
-  const [paymentsEnabled, setPaymentsEnabled] = useState(true);
-  const [togglingPayments, setTogglingPayments] = useState(false);
+
   const [costReport, setCostReport] = useState<any>(null);
   const [loadingCosts, setLoadingCosts] = useState(false);
   const [expandedUser, setExpandedUser] = useState<string | null>(null);
@@ -38,6 +37,12 @@ export default function AdminPage() {
   const [savingWhitelistUser, setSavingWhitelistUser] = useState<string | null>(null);
   const [whitelistEmail, setWhitelistEmail] = useState("");
   const [addingWhitelistEmail, setAddingWhitelistEmail] = useState(false);
+
+  // Users tab state
+  const [userProfiles, setUserProfiles] = useState<any[]>([]);
+  const [childProfilesByUser, setChildProfilesByUser] = useState<Record<string, any[]>>({});
+  const [userSearch, setUserSearch] = useState("");
+  const [loadingUsers, setLoadingUsers] = useState(false);
 
   // Coupons tab state
   const [coupons, setCoupons] = useState<any[]>([]);
@@ -59,11 +64,12 @@ export default function AdminPage() {
   const fetchAll = async () => {
     setLoading(true);
     try {
-      const [storiesSnap, usersSnap, paymentsSnap, pricingSnap] = await Promise.all([
+      const [storiesSnap, usersSnap, paymentsSnap, pricingSnap, childProfilesSnap] = await Promise.all([
         getDocs(collection(db, "stories")),
         getDocs(collection(db, "user_profile")),
         getDocs(query(collection(db, "payments"), orderBy("created_at", "desc"))),
         getDoc(doc(db, "pricing", "public")),
+        getDocs(collection(db, "child_profiles")),
       ]);
       const allStories = storiesSnap.docs.map((d) => d.data());
       const storyRows = storiesSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
@@ -87,26 +93,23 @@ export default function AdminPage() {
       setPayments(allPayments);
       setStories(storyRows);
       setUserEmailById(emailMap);
-      if (pricingSnap.exists()) {
-        setPaymentsEnabled(pricingSnap.data().payments_enabled ?? false);
-      }
+      // Users tab data
+      const sortedUsers = userRows.sort((a: any, b: any) =>
+        (a.email || "").localeCompare(b.email || "")
+      );
+      setUserProfiles(sortedUsers);
+      const cpMap: Record<string, any[]> = {};
+      childProfilesSnap.docs.forEach((d) => {
+        const cp = { id: d.id, ...d.data() };
+        const uid = (cp as any).user_id || "";
+        if (!cpMap[uid]) cpMap[uid] = [];
+        cpMap[uid].push(cp);
+      });
+      setChildProfilesByUser(cpMap);
     } catch (e) {
       toast.error("Failed to load admin data");
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleTogglePayments = async (checked) => {
-    setTogglingPayments(true);
-    try {
-      await setDoc(doc(db, "pricing", "public"), { payments_enabled: checked }, { merge: true });
-      setPaymentsEnabled(checked);
-      toast.success(checked ? "Payments enabled" : "Payments disabled — users can create stories for free");
-    } catch (e) {
-      toast.error("Failed to update setting");
-    } finally {
-      setTogglingPayments(false);
     }
   };
 
@@ -130,6 +133,7 @@ export default function AdminPage() {
 
   const TABS = [
     { id: "overview", label: "Overview" },
+    { id: "users", label: "Users" },
     { id: "stories", label: "Stories" },
     { id: "whitelist", label: "Whitelist" },
     { id: "coupons", label: "Coupons" },
@@ -481,28 +485,6 @@ export default function AdminPage() {
         {/* Overview Tab */}
         {tab === "overview" && stats && (
           <>
-          {/* Payment Toggle */}
-          <Card className="rounded-2xl border-2 border-[#F3E8FF] mb-6">
-            <CardContent className="p-5 flex items-center justify-between">
-              <div>
-                <p className="text-sm font-semibold text-[#1E1B4B]" style={{ fontFamily: "Fredoka" }}>
-                  Require Payment for Stories
-                </p>
-                <p className="text-xs text-[#1E1B4B]/50 mt-0.5">
-                  {paymentsEnabled
-                    ? "Users must pay before generating illustrations"
-                    : "Users can create storybooks for free"}
-                </p>
-              </div>
-              <Switch
-                data-testid="toggle-payments"
-                checked={paymentsEnabled}
-                onCheckedChange={handleTogglePayments}
-                disabled={togglingPayments}
-              />
-            </CardContent>
-          </Card>
-
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8" data-testid="admin-stats">
             {[
               { label: "Users", value: stats.total_users, icon: Users, color: "#3730A3" },
@@ -523,6 +505,103 @@ export default function AdminPage() {
           </div>
 
         </>
+        )}
+
+        {/* Users Tab */}
+        {tab === "users" && (
+          <div>
+            {/* Search */}
+            <div className="relative mb-4">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#1E1B4B]/30" strokeWidth={2} />
+              <input
+                type="text"
+                value={userSearch}
+                onChange={(e) => setUserSearch(e.target.value)}
+                placeholder="Search by name or email…"
+                className="w-full pl-9 pr-4 py-2.5 rounded-xl border-2 border-[#F3E8FF] text-sm text-[#1E1B4B] placeholder:text-[#1E1B4B]/30 focus:outline-none focus:border-[#3730A3]/30 bg-white"
+              />
+            </div>
+            <div className="space-y-3">
+              {userProfiles
+                .filter((u: any) => {
+                  const q = userSearch.toLowerCase();
+                  return !q ||
+                    (u.email || "").toLowerCase().includes(q) ||
+                    (u.name || "").toLowerCase().includes(q);
+                })
+                .map((u: any) => {
+                  const uid = u.uid || u.id;
+                  const children = childProfilesByUser[uid] || [];
+                  const storyCount = stories.filter((s: any) => s.user_id === uid).length;
+                  const isExpanded = expandedUser === uid;
+                  return (
+                    <div key={uid} className="rounded-2xl border-2 border-[#F3E8FF] bg-white overflow-hidden">
+                      <button
+                        className="w-full flex items-center gap-4 p-4 text-left hover:bg-[#F3E8FF]/30 transition-colors"
+                        onClick={() => setExpandedUser(isExpanded ? null : uid)}
+                      >
+                        <div className="w-10 h-10 rounded-xl bg-[#3730A3]/10 flex items-center justify-center flex-shrink-0">
+                          <User className="w-5 h-5 text-[#3730A3]/60" strokeWidth={2} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold text-[#1E1B4B] truncate" style={{ fontFamily: "Fredoka" }}>
+                            {u.name || "(no name)"}
+                          </p>
+                          <p className="text-xs text-[#1E1B4B]/50 truncate">{u.email || "—"}</p>
+                        </div>
+                        <div className="flex items-center gap-3 flex-shrink-0 text-right">
+                          <div className="text-xs text-[#1E1B4B]/40">
+                            <span className="font-semibold text-[#1E1B4B]/60">{storyCount}</span> stories
+                          </div>
+                          <div className="text-xs text-[#1E1B4B]/40">
+                            <span className="font-semibold text-[#1E1B4B]/60">{children.length}</span> profiles
+                          </div>
+                          {isExpanded ? (
+                            <ChevronUp className="w-4 h-4 text-[#1E1B4B]/30" strokeWidth={2} />
+                          ) : (
+                            <ChevronDown className="w-4 h-4 text-[#1E1B4B]/30" strokeWidth={2} />
+                          )}
+                        </div>
+                      </button>
+                      {isExpanded && (
+                        <div className="border-t-2 border-[#F3E8FF] px-4 py-3 space-y-2 bg-[#F3E8FF]/20">
+                          <p className="text-[10px] font-semibold text-[#1E1B4B]/40 uppercase tracking-wider mb-1">Child Profiles</p>
+                          {children.length === 0 ? (
+                            <p className="text-xs text-[#1E1B4B]/40 italic">No child profiles</p>
+                          ) : (
+                            children.map((cp: any) => (
+                              <div key={cp.id} className="flex items-center gap-3 p-2 rounded-xl bg-white border border-[#F3E8FF]">
+                                {cp.avatar_url ? (
+                                  <img src={cp.avatar_url} alt={cp.name} className="w-8 h-8 rounded-lg object-cover flex-shrink-0" />
+                                ) : (
+                                  <div className="w-8 h-8 rounded-lg bg-[#FF9F1C]/10 flex items-center justify-center flex-shrink-0">
+                                    <Baby className="w-4 h-4 text-[#FF9F1C]" strokeWidth={2} />
+                                  </div>
+                                )}
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-xs font-semibold text-[#1E1B4B] truncate">{cp.name}</p>
+                                  <p className="text-[10px] text-[#1E1B4B]/40">
+                                    Age {cp.age}{cp.gender ? ` · ${cp.gender}` : ""}
+                                  </p>
+                                </div>
+                              </div>
+                            ))
+                          )}
+                          <p className="text-[10px] font-semibold text-[#1E1B4B]/40 uppercase tracking-wider mt-2 mb-1">User ID</p>
+                          <p className="text-[10px] font-mono text-[#1E1B4B]/40 break-all">{uid}</p>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              {userProfiles.length === 0 && (
+                <div className="text-center py-16">
+                  <Users className="w-12 h-12 text-[#F3E8FF] mx-auto mb-4" strokeWidth={1.5} />
+                  <p className="text-sm text-[#1E1B4B]/50">No users found</p>
+                </div>
+              )}
+            </div>
+          </div>
         )}
 
         {/* Tasks Tab */}

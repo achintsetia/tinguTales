@@ -42,6 +42,13 @@ const getBookPrice = async (pageCount: number): Promise<number> => {
   return FALLBACK_PRICING_TABLE[pageCount] ?? Math.max(1, Math.round(pageCount * 13));
 };
 
+const isPaymentsEnabled = async (): Promise<boolean> => {
+  const pricingSnap = await db.collection("pricing").doc("public").get();
+  if (!pricingSnap.exists) return false;
+  const data = pricingSnap.data() ?? {};
+  return data.payments_enabled === true;
+};
+
 const requireRazorpayCredentials = () => {
   const keyId = process.env.RAZORPAY_KEY_ID;
   const keySecret = process.env.RAZORPAY_KEY_SECRET;
@@ -89,6 +96,7 @@ export const createStoryPaymentOrder = onCall<CreateStoryPaymentOrderRequest>(
       throw new HttpsError("failed-precondition", "Invalid page count on story.");
     }
 
+    const paymentsEnabled = await isPaymentsEnabled();
     const baseAmount = await getBookPrice(pageCount);
     const discountPercent = Number.isFinite(discountPercentRaw) ?
       Math.min(100, Math.max(0, discountPercentRaw)) :
@@ -98,6 +106,18 @@ export const createStoryPaymentOrder = onCall<CreateStoryPaymentOrderRequest>(
 
     const paymentRef = db.collection("payments").doc();
     const nowIso = new Date().toISOString();
+
+    if (!paymentsEnabled) {
+      return {
+        requiresPayment: false,
+        paymentDocId: "",
+        amountBeforeDiscount: baseAmount,
+        discountAmount,
+        discountPercent,
+        amount: 0,
+        currency: "INR",
+      };
+    }
 
     if (payableAmount <= 0) {
       await paymentRef.set({

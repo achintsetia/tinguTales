@@ -19,6 +19,7 @@ export default function PricingConfigPage() {
   const navigate = useNavigate();
 
   const [tiers, setTiers] = useState<PricingTier[]>([]);
+  const [paymentsEnabled, setPaymentsEnabled] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -40,6 +41,7 @@ export default function PricingConfigPage() {
       const snap = await getDoc(doc(db, "pricing", "public"));
       if (snap.exists()) {
         const data = snap.data();
+        setPaymentsEnabled(data.payments_enabled === true);
         if (Array.isArray(data.tiers)) {
           setTiers((data.tiers as PricingTier[]).sort((a, b) => a.pages - b.pages));
           return;
@@ -50,10 +52,14 @@ export default function PricingConfigPage() {
       const legacySnap = await getDoc(doc(db, "settings", "pricing"));
       if (legacySnap.exists()) {
         const legacyData = legacySnap.data();
+        setPaymentsEnabled(legacyData.payments_enabled === true);
         if (Array.isArray(legacyData.tiers)) {
           const sorted = (legacyData.tiers as PricingTier[]).sort((a, b) => a.pages - b.pages);
           setTiers(sorted);
-          await setDoc(doc(db, "pricing", "public"), { tiers: sorted }, { merge: true });
+          await setDoc(doc(db, "pricing", "public"), {
+            tiers: sorted,
+            payments_enabled: legacyData.payments_enabled === true,
+          }, { merge: true });
           return;
         }
       }
@@ -83,14 +89,13 @@ export default function PricingConfigPage() {
       toast.error("All prices must be greater than 0");
       return;
     }
-    if (tiers.length === 0) {
-      toast.error("Add at least one pricing tier");
-      return;
-    }
     setSaving(true);
     try {
       const sorted = [...tiers].sort((a, b) => a.pages - b.pages);
-      await setDoc(doc(db, "pricing", "public"), { tiers: sorted }, { merge: true });
+      await setDoc(doc(db, "pricing", "public"), {
+        tiers: sorted,
+        payments_enabled: paymentsEnabled,
+      }, { merge: true });
       setTiers(sorted);
       toast.success("Pricing saved");
     } catch {
@@ -174,6 +179,32 @@ export default function PricingConfigPage() {
                 Disabled tiers will not be shown as options during story creation.
               </p>
             </div>
+          </CardContent>
+        </Card>
+
+        <Card className="rounded-2xl border-2 border-[#F3E8FF]">
+          <CardContent className="p-4 flex items-center justify-between gap-4">
+            <div>
+              <p className="text-sm font-semibold text-[#1E1B4B]">Enable Story Payments</p>
+              <p className="text-xs text-[#1E1B4B]/60 mt-0.5">
+                When enabled, users must pay before illustration generation starts.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setPaymentsEnabled((prev) => !prev)}
+              className={`w-12 h-7 rounded-full transition-colors ${
+                paymentsEnabled ? "bg-[#2A9D8F]" : "bg-[#1E1B4B]/20"
+              }`}
+              aria-pressed={paymentsEnabled}
+              aria-label="Toggle story payments"
+            >
+              <span
+                className={`block w-6 h-6 rounded-full bg-white shadow-sm transition-transform mx-0.5 ${
+                  paymentsEnabled ? "translate-x-5" : "translate-x-0"
+                }`}
+              />
+            </button>
           </CardContent>
         </Card>
 

@@ -19,6 +19,12 @@ export interface CharacterCard {
   default_outfit: string;
 }
 
+export interface SupportingCharacter {
+  name: string;
+  role: string; // e.g. "grandmother", "best friend", "teacher"
+  appearance: string; // full prose description for consistent illustration
+}
+
 interface SceneData {
   page: number;
   page_type: string;
@@ -166,7 +172,82 @@ async function describeAvatarAsCharacterCard(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Agent B — Generate scene prompts for every page
+// Agent B — Extract and describe supporting characters from the story pages
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Reads all story pages and identifies supporting characters other than the main child,
+ * producing a consistent visual description for each that will be embedded in scene prompts.
+ * @param {GoogleGenAI} ai - GoogleGenAI instance.
+ * @param {string} model - Gemini model name.
+ * @param {string} childName - The main child protagonist's name (to exclude).
+ * @param {string} synopsis - Story synopsis.
+ * @param {Array<object>} draftPages - Draft pages with text.
+ * @return {Promise<object>} Object with supporting characters array and total token count.
+ */
+async function extractSupportingCharacters(
+  ai: GoogleGenAI,
+  model: string,
+  childName: string,
+  synopsis: string,
+  draftPages: {page: number; text: string; page_type?: string}[]
+): Promise<{characters: SupportingCharacter[]; tokens: number}> {
+  const storyText = draftPages
+    .filter((p) => p.page_type !== "back_cover" && p.page_type !== "cover")
+    .map((p) => `[Page ${p.page}]: ${p.text}`)
+    .join("\n");
+
+  if (!storyText.trim()) return {characters: [], tokens: 0};
+
+  const prompt =
+    `You are reading a children's storybook. The main character is "${childName}".\n\n` +
+    `Story synopsis: ${synopsis}\n\n` +
+    "Story pages:\n" + storyText + "\n\n" +
+    "Identify ALL named or clearly described supporting characters who appear in the story " +
+    "(exclude the main child character whose name is \"" + childName + "\").\n" +
+    "For each supporting character, provide a DETAILED and SPECIFIC visual description " +
+    "that an illustrator can use to draw them IDENTICALLY on every page they appear.\n\n" +
+    "Include age, gender, skin tone, hair, face features, clothing style, and any distinctive attributes.\n" +
+    "If a character is not physically described in the text, infer a culturally appropriate " +
+    "Indian appearance consistent with their role (e.g. grandmother = elderly Indian woman).\n\n" +
+    "Return ONLY a JSON array (empty if no supporting characters):\n" +
+    "[\n" +
+    "  {\n" +
+    "    \"name\": \"character name as it appears in the story\",\n" +
+    "    \"role\": \"their role e.g. grandmother, best friend, teacher, shopkeeper\",\n" +
+    "    \"appearance\": \"full prose description: age, gender, skin tone, face, hair, " +
+    "typical clothing, any distinctive features\"\n" +
+    "  }\n" +
+    "]";
+
+  const response = await ai.models.generateContent({
+    model,
+    contents: [{role: "user", parts: [{text: prompt}]}],
+    config: {
+      systemInstruction:
+        "You are a character designer for Indian children's picture books. " +
+        "Identify supporting characters from story text and describe them with enough " +
+        "detail that an illustrator can draw them consistently on every page. " +
+        "Return only valid JSON.",
+    },
+  });
+
+  const text = response.text ?? "";
+  const tokens = response.usageMetadata?.totalTokenCount ?? 0;
+
+  try {
+    const parsed = parseGeminiJson(text);
+    if (Array.isArray(parsed)) {
+      return {characters: parsed as SupportingCharacter[], tokens};
+    }
+  } catch {
+    logger.warn("[generateScenes] supporting character parse failed — using empty list");
+  }
+  return {characters: [], tokens};
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Agent C — Generate scene prompts for every page
 // Focus: consistent character appearance, rich cultural scene context
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -190,6 +271,7 @@ interface RawSceneItem {
  * @param {Array<object>} draftPages - Draft page objects (page, text, page_type).
  * @param {CharacterCard} card - Structured character card from avatar description.
  * @param {number} numPages - Total page count including cover and branding.
+ * @param {Array<object>} supportingCharacters - Supporting characters with consistent appearance descriptions.
  * @return {Promise<object>} Object with scene items array and total token count.
  */
 async function generateScenePrompts(
@@ -203,7 +285,8 @@ async function generateScenePrompts(
   childGender: string,
   draftPages: {page: number; text: string; page_type?: string}[],
   card: CharacterCard,
-  numPages: number
+  numPages: number,
+  supportingCharacters: SupportingCharacter[]
 ): Promise<{items: RawSceneItem[]; tokens: number}> {
   const backCoverIndex = numPages - 1;
   const storyPageRange = numPages > 3 ? `1–${numPages - 2}` : "1";
@@ -234,6 +317,15 @@ async function generateScenePrompts(
     `Outfit: ${card.default_outfit}.`,
   ].join("  ");
 
+  const supportingCharactersSection = supportingCharacters.length > 0 ?
+    "SUPPORTING CHARACTERS — draw each IDENTICALLY on EVERY page they appear:\n" +
+    supportingCharacters.map((sc, i) =>
+      `${i + 1}. ${sc.name} (${sc.role}): ${sc.appearance}`
+    ).join("\n") +
+    "\nFor each page: if a supporting character appears in the story text, describe them explicitly " +
+    "using the appearance above. Never change their look between pages.\n\n" :
+    "";
+
   const exampleJson = JSON.stringify(
     Array.from({length: numPages}, (_, i) => ({
       page: i,
@@ -257,6 +349,7 @@ async function generateScenePrompts(
     `4. Outfit: ${card.default_outfit} — keep this EXACT outfit on all pages; do NOT ` +
     "change clothing even for festivals or special events.\n" +
     `5. Accessories: ${card.accessories} — always present, never swapped.\n\n` +
+    supportingCharactersSection +
     "PAGE-SPECIFIC RULES:\n" +
     `- Page 0 (COVER): ${childName} as the HERO — large, centred portrait. ` +
     "Vibrant Indian storybook motifs (marigolds, rangoli, golden sunrise). " +
@@ -388,18 +481,33 @@ async function runScenePipeline(storyId: string): Promise<void> {
     logger.warn(`[generateScenes] avatar describe failed (using defaults): ${avatarErr}`);
   }
 
-  // ── Step 2: Generate scene prompts (with retry) ───────────────────────────
+  // ── Step 2: Extract supporting characters from story text ────────────────
+  logger.info("[generateScenes] extracting supporting characters");
+  let supportingCharacters: SupportingCharacter[] = [];
+  try {
+    const {characters, tokens: tSC} = await withRetry(() =>
+      extractSupportingCharacters(ai, modelName, childName, synopsis, draftPages)
+    );
+    supportingCharacters = characters;
+    totalTokens += tSC;
+    logger.info(`[generateScenes] found ${supportingCharacters.length} supporting character(s): ${supportingCharacters.map((c) => c.name).join(", ")}`);
+  } catch (scErr) {
+    logger.warn(`[generateScenes] supporting character extraction failed (skipping): ${scErr}`);
+  }
+
+  // ── Step 3: Generate scene prompts (with retry) ───────────────────────────
   logger.info(`[generateScenes] generating scene prompts for ${numPages} pages`);
   const {items: sceneItems, tokens: t2} = await withRetry(() =>
     generateScenePrompts(
       ai, modelName, storyTitle, titleEnglish, synopsis,
-      childName, childAge, childGender, draftPages, characterCard, numPages
+      childName, childAge, childGender, draftPages, characterCard, numPages,
+      supportingCharacters
     )
   );
   totalTokens += t2;
   logger.info(`[generateScenes] got ${sceneItems.length} prompts, totalTokens=${totalTokens}`);
 
-  // ── Step 3: Write pages subcollection ────────────────────────────────────
+  // ── Step 4: Write pages subcollection ────────────────────────────────────
   const pagesColl = storyRef.collection("pages");
   const batch = db.batch();
 
@@ -436,9 +544,10 @@ async function runScenePipeline(storyId: string): Promise<void> {
 
   void recordTokenConsumption(userId, "scene_generation", "gemini", totalTokens);
 
-  // ── Step 4: Save character card + advance to image generation ────────────
+  // ── Step 5: Save character card + supporting characters + advance to image generation ──
   await storyRef.update({
     character_card: characterCard,
+    supporting_characters: supportingCharacters,
     status: "generating_images",
     updated_at: FieldValue.serverTimestamp(),
   });
