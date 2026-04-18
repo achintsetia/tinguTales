@@ -422,7 +422,7 @@ export default function AdminPage() {
                   <p>
                     Sarvam: sarvam-30b $0.40/$1.60 per 1M in/out · transliteration $0.005 per 1K chars
                   </p>
-                  <p>USD → INR at ₹83.5 (fixed reference rate)</p>
+                  <p>USD → INR at ₹96 (fixed reference rate)</p>
                 </div>
               </>
             )}

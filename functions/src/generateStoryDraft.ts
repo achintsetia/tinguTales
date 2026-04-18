@@ -144,12 +144,12 @@ interface GenerateStoryDraftRequest {
   languageCode: string;
   interests: string[];
   pageCount?: number;
-  customIncident?: string;
-  nativeChildName?: string;
+  customIncident?: string | null;
+  nativeChildName?: string | null;
   /** Title of the selected story template, e.g. "Chhath Puja" */
-  templateTitle?: string;
+  templateTitle?: string | null;
   /** Description of the selected story template */
-  templateDesc?: string;
+  templateDesc?: string | null;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -531,7 +531,7 @@ async function qaAndNaturalize(
   logger.info("[qaAndNaturalize] calling Sarvam chat completions", {
     model: "sarvam-30b",
     temperature: 0.3,
-    maxTokens: 6000,
+    maxTokens: 4096,
     storyPages: storyOnlyPages.length,
   });
 
@@ -548,7 +548,7 @@ async function qaAndNaturalize(
         {role: "user", content: userPrompt},
       ],
       temperature: 0.3,
-      max_tokens: 6000,
+      max_tokens: 4096,
     }),
   });
 
@@ -663,6 +663,11 @@ export const generateStoryDraft = onCall<GenerateStoryDraftRequest>(
       templateDesc = "",
     } = request.data;
 
+    const safeCustomIncident = typeof customIncident === "string" ? customIncident : "";
+    const safeNativeChildName = typeof nativeChildName === "string" ? nativeChildName : "";
+    const safeTemplateTitle = typeof templateTitle === "string" ? templateTitle : "";
+    const safeTemplateDesc = typeof templateDesc === "string" ? templateDesc : "";
+
     if (!profileId || !language || !languageCode || !Array.isArray(interests) || interests.length === 0) {
       throw new HttpsError("invalid-argument", "profileId, language, languageCode, and interests are required.");
     }
@@ -677,7 +682,7 @@ export const generateStoryDraft = onCall<GenerateStoryDraftRequest>(
     if (profile.user_id !== userId) throw new HttpsError("permission-denied", "Profile does not belong to this user.");
 
     // Use native name when provided (e.g. "अर्जुन"), otherwise English name
-    const childName = nativeChildName.trim() || (profile.name as string);
+    const childName = safeNativeChildName.trim() || (profile.name as string);
     const childAge = (profile.age as number) ?? 5;
 
     // ── Read model name from Firestore ────────────────────────────────────
@@ -705,11 +710,11 @@ export const generateStoryDraft = onCall<GenerateStoryDraftRequest>(
       language,
       language_code: languageCode,
       interests,
-      custom_incident: customIncident,
+      custom_incident: safeCustomIncident,
       page_count: pageCount,
       avatar_url: profile.avatar_jpeg_url || profile.avatar_url || "",
-      template_title: templateTitle || null,
-      template_desc: templateDesc || null,
+      template_title: safeTemplateTitle || null,
+      template_desc: safeTemplateDesc || null,
       status: "drafting",
       title: "",
       draft_pages: [],
@@ -729,8 +734,8 @@ export const generateStoryDraft = onCall<GenerateStoryDraftRequest>(
       // === Agent 2: Plan the story ===
       logger.info(`[generateStoryDraft] [${storyId}] step 2/3 — planning story outline`);
       const {outline, tokens: t2} = await planStory(
-        ai, modelName, childName, childAge, themes, languageCode, language, pageCount, customIncident,
-        templateTitle, templateDesc
+        ai, modelName, childName, childAge, themes, languageCode, language, pageCount, safeCustomIncident,
+        safeTemplateTitle, safeTemplateDesc
       );
       totalTokens += t2;
       logger.info(`[generateStoryDraft] [${storyId}] outline title: "${outline.title}"`);
@@ -738,7 +743,7 @@ export const generateStoryDraft = onCall<GenerateStoryDraftRequest>(
       // === Agent 3: Write the story ===
       logger.info(`[generateStoryDraft] [${storyId}] step 3/4 — writing story`);
       const {pages: rawPages, tokens: t3} = await writeStory(
-        ai, modelName, outline, language, childName, childAge, pageCount, customIncident
+        ai, modelName, outline, language, childName, childAge, pageCount, safeCustomIncident
       );
       totalTokens += t3;
       logger.info(`[generateStoryDraft] [${storyId}] wrote ${rawPages.length} pages, totalTokens=${totalTokens}`);
@@ -788,7 +793,7 @@ export const generateStoryDraft = onCall<GenerateStoryDraftRequest>(
       void recordTokenConsumption(userId, "story_draft_generation", "gemini", totalTokens);
 
       // Persist completed draft
-      await storyRef.update({
+      await storyRef.set({
         status: "draft_ready",
         title: finalTitle,
         title_english: outline.titleEnglish ?? finalTitle,
@@ -796,7 +801,7 @@ export const generateStoryDraft = onCall<GenerateStoryDraftRequest>(
         moral: outline.moral ?? "",
         draft_pages: draftPages,
         updated_at: FieldValue.serverTimestamp(),
-      });
+      }, {merge: true});
 
       return {
         storyId,
@@ -806,10 +811,10 @@ export const generateStoryDraft = onCall<GenerateStoryDraftRequest>(
         status: "draft_ready",
       };
     } catch (err) {
-      await storyRef.update({
+      await storyRef.set({
         status: "draft_failed",
         updated_at: FieldValue.serverTimestamp(),
-      }).catch(() => {/* best-effort status update */});
+      }, {merge: true}).catch(() => {/* best-effort status update */});
       logger.error(`[generateStoryDraft] [${storyId}] failed`, err);
       if (err instanceof HttpsError) throw err;
       throw new HttpsError("internal", "Story generation failed. Please try again.");

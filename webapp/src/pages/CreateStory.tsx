@@ -6,7 +6,7 @@ import { Button } from "../components/ui/button";
 import { Card, CardContent } from "../components/ui/card";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "../components/ui/dialog";
 import BlurImage from "../components/BlurImage";
 import {
   BookOpen, ArrowLeft, ArrowRight, Check, Upload, Plus, Sparkles,
@@ -250,6 +250,7 @@ export default function CreateStory() {
   const [loadingStep, setLoadingStep] = useState(0);
   const loadingTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   const [approving, setApproving] = useState(false);
+  const [showApproveWarning, setShowApproveWarning] = useState(false);
   const [nativeChildName, setNativeChildName] = useState("");
   const [transliterating, setTransliterating] = useState(false);
   const [transliterationDone, setTransliterationDone] = useState(false);
@@ -577,6 +578,10 @@ export default function CreateStory() {
         ? STORY_TEMPLATES.find((t) => t.id === selectedTemplate)
         : null;
 
+      const propagatedChildName = selectedLang.code === "en"
+        ? (selectedProfile.name || "")
+        : nativeChildName.trim();
+
       const result = await generateFn({
         profileId: selectedProfile.profile_id,
         language: selectedLang.name,
@@ -584,7 +589,7 @@ export default function CreateStory() {
         interests: selectedInterests,
         pageCount: pageCount,
         customIncident: customIncident.trim() || undefined,
-        nativeChildName: (selectedLang?.code !== "en" && nativeChildName.trim()) ? nativeChildName.trim() : undefined,
+        nativeChildName: propagatedChildName || undefined,
         templateTitle: activeTemplate?.title || undefined,
         templateDesc: activeTemplate?.desc || undefined,
       });
@@ -600,7 +605,7 @@ export default function CreateStory() {
       // Persist template & nativeChildName into the Firestore doc
       updateDoc(firestoreDoc(db, "stories", storyId), {
         selected_template: selectedTemplate || null,
-        native_child_name: nativeChildName.trim() || null,
+        native_child_name: propagatedChildName || null,
       }).catch(() => {/* best-effort */});
     } catch (e) {
       setDraftError("Failed to generate story. Please try again.");
@@ -626,6 +631,11 @@ export default function CreateStory() {
       toast.error("Story generation failed. Please try again.");
       setApproving(false);
     }
+  };
+
+  const handleApproveClick = () => {
+    if (!draftStoryId || editedPages.length === 0 || approving) return;
+    setShowApproveWarning(true);
   };
 
   // Auto-trigger draft when entering step 5; reset when navigating back to early steps
@@ -723,10 +733,10 @@ export default function CreateStory() {
               Avatar ready! 🎉
             </DialogTitle>
           </DialogHeader>
-          <p className="text-sm text-[#1E1B4B]/70 mt-1">
+          <DialogDescription className="text-sm text-[#1E1B4B]/70 mt-1">
             {deleteUploadPrompt?.profileName}'s cartoon avatar has been created.
             Would you like to delete the original uploaded photo to save storage space?
-          </p>
+          </DialogDescription>
           <div className="flex gap-3 mt-4">
             <Button
               variant="outline"
@@ -742,6 +752,39 @@ export default function CreateStory() {
             >
               <Trash2 className="w-4 h-4 mr-1.5" strokeWidth={2} />
               {deletingUpload ? "Deleting..." : "Delete Upload"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Story-approval warning dialog */}
+      <Dialog open={showApproveWarning} onOpenChange={setShowApproveWarning}>
+        <DialogContent className="rounded-3xl border-2 border-[#F3E8FF] max-w-md">
+          <DialogHeader>
+            <DialogTitle style={{ fontFamily: "Fredoka" }} className="text-[#1E1B4B] text-xl">
+              One quick check before we begin
+            </DialogTitle>
+          </DialogHeader>
+          <DialogDescription className="text-sm text-[#1E1B4B]/75 mt-1 leading-relaxed">
+            Please review your story carefully. Once illustration generation starts,
+            you won't be able to edit the story text.
+          </DialogDescription>
+          <div className="flex gap-3 mt-4">
+            <Button
+              variant="outline"
+              className="flex-1 rounded-full border-[#F3E8FF]"
+              onClick={() => setShowApproveWarning(false)}
+            >
+              Review Again
+            </Button>
+            <Button
+              className="flex-1 rounded-full bg-[#FF9F1C] hover:bg-[#E88A12] text-[#1E1B4B] font-bold"
+              onClick={() => {
+                setShowApproveWarning(false);
+                handleApprove();
+              }}
+            >
+              Yes, Start Creating
             </Button>
           </div>
         </DialogContent>
@@ -1561,46 +1604,24 @@ export default function CreateStory() {
                   <p className="text-[#1E1B4B]/50 mt-1 text-sm">This usually takes 1–2 minutes</p>
                 </div>
 
-                {/* Step progress */}
-                <div className="max-w-md mx-auto mb-10 space-y-3">
-                  {LOADING_STEPS.map((s, i) => {
-                    const isDone = i < loadingStep;
-                    const isActive = i === loadingStep;
-                    return (
-                      <div
-                        key={i}
-                        className={`flex items-center gap-3 px-4 py-3 rounded-2xl transition-all duration-500 ${
-                          isActive ? "bg-[#FF9F1C]/10 border-2 border-[#FF9F1C]/30" :
-                          isDone  ? "bg-[#2A9D8F]/6 border-2 border-[#2A9D8F]/20" :
-                                    "bg-white border-2 border-[#F3E8FF] opacity-40"
-                        }`}
-                      >
-                        <div className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 ${
-                          isDone  ? "bg-[#2A9D8F]" :
-                          isActive ? "bg-[#FF9F1C]" :
-                                     "bg-[#F3E8FF]"
-                        }`}>
-                          {isDone ? (
-                            <Check className="w-4 h-4 text-white" strokeWidth={2.5} />
-                          ) : isActive ? (
-                            <Sparkles className="w-3.5 h-3.5 text-white animate-pulse" strokeWidth={2} />
-                          ) : (
-                            <span className="w-2 h-2 rounded-full bg-[#1E1B4B]/20" />
-                          )}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className={`text-sm font-semibold ${
-                            isActive ? "text-[#1E1B4B]" :
-                            isDone  ? "text-[#2A9D8F]" :
-                                      "text-[#1E1B4B]/40"
-                          }`}>{s.label}</p>
-                          {isActive && (
-                            <p className="text-xs text-[#1E1B4B]/50 mt-0.5">{s.sub}</p>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
+                {/* Step progress (single active step to save space) */}
+                <div className="max-w-md mx-auto mb-10">
+                  <div className="flex items-center gap-3 px-4 py-3 rounded-2xl border-2 border-[#FF9F1C]/30 bg-[#FF9F1C]/10 transition-all duration-500">
+                    <div className="w-7 h-7 rounded-full bg-[#FF9F1C] flex items-center justify-center flex-shrink-0">
+                      <Sparkles className="w-3.5 h-3.5 text-white animate-pulse" strokeWidth={2} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-[#1E1B4B]">
+                        {LOADING_STEPS[Math.min(loadingStep, LOADING_STEPS.length - 1)].label}
+                      </p>
+                      <p className="text-xs text-[#1E1B4B]/50 mt-0.5">
+                        {LOADING_STEPS[Math.min(loadingStep, LOADING_STEPS.length - 1)].sub}
+                      </p>
+                    </div>
+                    <span className="text-xs font-semibold text-[#1E1B4B]/60">
+                      {Math.min(loadingStep + 1, LOADING_STEPS.length)}/{LOADING_STEPS.length}
+                    </span>
+                  </div>
                 </div>
 
                 {/* Page skeleton placeholders */}
@@ -1739,7 +1760,7 @@ export default function CreateStory() {
                   )}
                   <Button
                     data-testid="btn-approve-story"
-                    onClick={handleApprove}
+                    onClick={handleApproveClick}
                     disabled={approving}
                     className="rounded-full bg-[#FF9F1C] hover:bg-[#E88A12] text-[#1E1B4B] font-bold text-lg px-10 min-h-[56px] shadow-lg hover:shadow-xl transition-all disabled:opacity-50"
                   >
