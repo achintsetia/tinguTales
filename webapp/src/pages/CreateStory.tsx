@@ -1,4 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+
+declare global {
+  interface Window {
+    Razorpay: any;
+  }
+}
 import { useNavigate } from "react-router-dom";
 import { useAuth, API } from "../context/AuthContext";
 import axios from "axios";
@@ -14,7 +20,7 @@ import {
   User, Globe, Heart, Rocket, TreePine, Fish, Music, Palette, Star,
   Plane, Train, Crown, Zap, ChefHat, Gamepad2, Cat, Trash2, Shuffle,
   Flame, Sun, Mountain, Feather, Tent, Lamp, BookHeart, Drama,
-  AlertCircle, RotateCcw,
+  AlertCircle, RotateCcw, Gift, Trophy, GraduationCap, PartyPopper,
 } from "lucide-react";
 import { db, storage, functions } from "../firebase";
 import { collection, query, where, onSnapshot, deleteDoc, doc as firestoreDoc, updateDoc } from "firebase/firestore";
@@ -74,6 +80,7 @@ const TEMPLATE_CATEGORIES = [
   { id: "cultural", label: "Indian Culture" },
   { id: "learning", label: "Learning" },
   { id: "bedtime", label: "Bedtime" },
+  { id: "occasion", label: "Occasions 🎉" },
 ];
 
 const STORY_TEMPLATES = [
@@ -194,6 +201,18 @@ const STORY_TEMPLATES = [
   { id: "cultural-banyan", title: "The Wise Banyan Tree", desc: "An ancient banyan tree shares stories with the children of the village", interests: ["folklore", "nature", "wisdom", "village-life"], ageMin: 4, ageMax: 8, color: "#2A9D8F", icon: TreePine, category: "cultural" },
   { id: "cultural-mela", title: "The Village Mela", desc: "A magical fair with puppet shows, ferris wheels, cotton candy and new friends", interests: ["village-life", "music", "friendship", "magic"], ageMin: 3, ageMax: 7, color: "#E76F51", icon: Tent, category: "cultural" },
 
+  // ═══ OCCASION / MILESTONE TEMPLATES ═══
+  { id: "occ-birthday", title: "Happy Birthday Adventure!", desc: "A magical quest where [child] discovers the best birthday gift is the joy they bring to others", interests: ["magic", "friendship", "kindness"], ageMin: 2, ageMax: 10, color: "#FF9F1C", icon: PartyPopper, category: "occasion" },
+  { id: "occ-birthday-cake", title: "The Magic Birthday Cake", desc: "Baking a birthday cake with family — each ingredient adds a special wish that comes true", interests: ["cooking", "magic", "kindness"], ageMin: 2, ageMax: 7, color: "#E76F51", icon: ChefHat, category: "occasion" },
+  { id: "occ-achievement", title: "Champion of the Day", desc: "Celebrating a big win — a medal, a prize or just doing something incredibly brave", interests: ["courage", "friendship", "wisdom"], ageMin: 4, ageMax: 10, color: "#3730A3", icon: Trophy, category: "occasion" },
+  { id: "occ-graduation", title: "Cap & Gown Hero", desc: "The big graduation day — crossing the stage, family cheers and a brand new adventure begins", interests: ["courage", "wisdom", "friendship"], ageMin: 5, ageMax: 10, color: "#2A9D8F", icon: GraduationCap, category: "occasion" },
+  { id: "occ-first-day-school", title: "First Day at School", desc: "Nervous at first, then making a new best friend — the magical adventure of starting school", interests: ["courage", "friendship", "kindness"], ageMin: 3, ageMax: 6, color: "#3730A3", icon: BookOpen, category: "occasion" },
+  { id: "occ-new-sibling", title: "A New Baby!", desc: "The day a little brother or sister arrives — big feelings, surprises and big-kid pride", interests: ["kindness", "friendship", "courage"], ageMin: 3, ageMax: 7, color: "#E76F51", icon: Heart, category: "occasion" },
+  { id: "occ-moving-house", title: "Our New Home", desc: "Moving to a new house — saying goodbye to old friends while finding exciting new ones", interests: ["courage", "friendship", "kindness"], ageMin: 4, ageMax: 8, color: "#2A9D8F", icon: Tent, category: "occasion" },
+  { id: "occ-sports-day", title: "Sports Day Champion", desc: "Training all year for the big races on Sports Day — teamwork, sportsmanship and crossing the finish line", interests: ["sports", "courage", "friendship"], ageMin: 5, ageMax: 10, color: "#FF9F1C", icon: Trophy, category: "occasion" },
+  { id: "occ-gift-giving", title: "The Gift of Giving", desc: "The best gift isn't bought — it's made with love and given with a full heart", interests: ["kindness", "art", "friendship"], ageMin: 3, ageMax: 7, color: "#E76F51", icon: Gift, category: "occasion" },
+  { id: "occ-exam-success", title: "The Big Test", desc: "Studying hard, feeling nervous, then acing the exam — hard work and confidence always pay off", interests: ["wisdom", "courage", "friendship"], ageMin: 6, ageMax: 10, color: "#3730A3", icon: Star, category: "occasion" },
+
   // ═══ BEDTIME TEMPLATES ═══
   { id: "bedtime-stars", title: "Counting Stars", desc: "Lying on the terrace, counting stars and dreaming of adventures", interests: ["nature", "magic", "chai-stories"], ageMin: 2, ageMax: 5, color: "#3730A3", icon: Star, category: "bedtime" },
   { id: "bedtime-lullaby", title: "The Lullaby River", desc: "A gentle river sings a lullaby that carries dreams to sleeping children", interests: ["music", "rivers-mountains", "magic"], ageMin: 2, ageMax: 4, color: "#2A9D8F", icon: Music, category: "bedtime" },
@@ -238,7 +257,6 @@ export default function CreateStory() {
   const [nativeChildName, setNativeChildName] = useState("");
   const [transliterating, setTransliterating] = useState(false);
   const [transliterationDone, setTransliterationDone] = useState(false);
-  const pollIntervalRef = useRef(null);
   const [showNewProfile, setShowNewProfile] = useState(false);
   const [newProfile, setNewProfile] = useState({ name: "", age: "", gender: "" });
   const [photoFile, setPhotoFile] = useState(null);
@@ -527,57 +545,35 @@ export default function CreateStory() {
     setDraftError("");
     setDraftStatus("drafting");
     try {
-      const res = await axios.post(`${API}/stories/draft`, {
-        profile_id: selectedProfile.profile_id,
+      const generateFn = httpsCallable<
+        {
+          profileId: string; language: string; languageCode: string;
+          interests: string[]; pageCount: number;
+          customIncident?: string; nativeChildName?: string;
+        },
+        {storyId: string; title: string; titleEnglish: string; draftPages: {page: number; text: string}[]; status: string}
+      >(functions, "generateStoryDraft", {timeout: 570000}); // 9.5 min client timeout
+
+      const result = await generateFn({
+        profileId: selectedProfile.profile_id,
         language: selectedLang.name,
-        language_code: selectedLang.code,
+        languageCode: selectedLang.code,
         interests: selectedInterests,
-        page_count: pageCount,
-        custom_incident: customIncident.trim() || null,
-        native_child_name: (selectedLang?.code !== "en" && nativeChildName.trim()) ? nativeChildName.trim() : null,
+        pageCount: pageCount,
+        customIncident: customIncident.trim() || undefined,
+        nativeChildName: (selectedLang?.code !== "en" && nativeChildName.trim()) ? nativeChildName.trim() : undefined,
       });
-      setDraftStoryId(res.data.story_id);
-      pollForDraft(res.data.story_id);
+
+      const {storyId, title, draftPages} = result.data;
+      setDraftStoryId(storyId);
+      setDraftTitle(title);
+      setEditedPages(draftPages);
+      setDraftStatus("draft_ready");
+      setDraftLoading(false);
     } catch (e) {
-      setDraftError("Failed to start story generation. Please try again.");
+      setDraftError("Failed to generate story. Please try again.");
       setDraftLoading(false);
     }
-  };
-
-  const pollForDraft = (storyId) => {
-    if (pollIntervalRef.current) {
-      clearInterval(pollIntervalRef.current);
-      pollIntervalRef.current = null;
-    }
-    let attempts = 0;
-    const maxAttempts = 60; // ~3 minutes
-    const interval = setInterval(async () => {
-      attempts++;
-      try {
-        const res = await axios.get(`${API}/stories/${storyId}`);
-        const story = res.data;
-        setDraftStatus(story.status);
-        if (story.title) setDraftTitle(story.title);
-        if (story.status === "draft_ready") {
-          clearInterval(interval);
-          pollIntervalRef.current = null;
-          setEditedPages(story.draft_pages || []);
-          setDraftLoading(false);
-        } else if (story.status === "draft_failed") {
-          clearInterval(interval);
-          pollIntervalRef.current = null;
-          setDraftError(story.error_message || "Story generation failed. Please try again.");
-          setDraftLoading(false);
-        }
-      } catch (e) { /* ignore polling errors */ }
-      if (attempts >= maxAttempts) {
-        clearInterval(interval);
-        pollIntervalRef.current = null;
-        setDraftError("Generation timed out. Please try again.");
-        setDraftLoading(false);
-      }
-    }, 3000);
-    pollIntervalRef.current = interval;
   };
 
   const handleApprove = async () => {
@@ -587,7 +583,11 @@ export default function CreateStory() {
     if (!paymentsEnabled) {
       try {
         setApproving(true);
-        await axios.post(`${API}/stories/${draftStoryId}/approve`, { pages_text: editedPages });
+        const approveFn = httpsCallable<
+          {storyId: string; pagesText: {page: number; text: string}[]},
+          {storyId: string; status: string}
+        >(functions, "approveStoryDraft");
+        await approveFn({storyId: draftStoryId, pagesText: editedPages});
         clearWizardState();
         toast.success("Generating illustrations...");
         navigate(`/story/${draftStoryId}`);
@@ -627,7 +627,11 @@ export default function CreateStory() {
               razorpay_signature: response.razorpay_signature,
             });
             // Payment verified — now approve and generate
-            await axios.post(`${API}/stories/${draftStoryId}/approve`, { pages_text: editedPages });
+            const approveFn = httpsCallable<
+              {storyId: string; pagesText: {page: number; text: string}[]},
+              {storyId: string; status: string}
+            >(functions, "approveStoryDraft");
+            await approveFn({storyId: draftStoryId, pagesText: editedPages});
             clearWizardState();
             toast.success("Payment successful! Generating illustrations...");
             navigate(`/story/${draftStoryId}`);
@@ -669,10 +673,6 @@ export default function CreateStory() {
       handleGenerateDraft();
     }
     if (step !== 5) {
-      if (pollIntervalRef.current) {
-        clearInterval(pollIntervalRef.current);
-        pollIntervalRef.current = null;
-      }
       setDraftStoryId(null);
       setDraftLoading(false);
       setDraftStatus("");
@@ -753,7 +753,7 @@ export default function CreateStory() {
                   if (s.num < step && !draftLoading && !approving) {
                     // If going back from step 5, discard draft
                     if (step === 5 && draftStoryId) {
-                      axios.delete(`${API}/stories/${draftStoryId}`).catch(() => {});
+                      deleteDoc(firestoreDoc(db, "stories", draftStoryId)).catch(() => {});
                       setDraftStoryId(null);
                       setEditedPages([]);
                       setDraftTitle("");
@@ -780,7 +780,7 @@ export default function CreateStory() {
                 onClick={() => {
                   if (s.num < step && !draftLoading && !approving) {
                     if (step === 5 && draftStoryId) {
-                      axios.delete(`${API}/stories/${draftStoryId}`).catch(() => {});
+                      deleteDoc(firestoreDoc(db, "stories", draftStoryId)).catch(() => {});
                       setDraftStoryId(null);
                       setEditedPages([]);
                       setDraftTitle("");
@@ -1231,7 +1231,7 @@ export default function CreateStory() {
               return (
                 <>
                   {/* Category tabs */}
-                  <div className="flex items-center gap-2 mb-5 overflow-x-auto pb-1 scrollbar-hide">
+                  <div className="flex flex-wrap gap-2 mb-2">
                     {TEMPLATE_CATEGORIES.map((cat) => {
                       const count = cat.id === "all"
                         ? allAge.length
@@ -1254,7 +1254,8 @@ export default function CreateStory() {
                         </button>
                       );
                     })}
-                    <div className="flex-1" />
+                  </div>
+                  <div className="flex justify-end mb-3">
                     <button
                       data-testid="btn-surprise-me"
                       onClick={() => {
@@ -1264,7 +1265,7 @@ export default function CreateStory() {
                         setSelectedTemplate(random.id);
                         setSelectedInterests(random.interests);
                       }}
-                      className="inline-flex items-center gap-1.5 text-sm font-semibold text-[#3730A3] hover:text-[#FF9F1C] transition-colors whitespace-nowrap"
+                      className="inline-flex items-center gap-1.5 text-sm font-semibold text-[#3730A3] hover:text-[#FF9F1C] transition-colors"
                     >
                       <Shuffle className="w-4 h-4" strokeWidth={2.5} />
                       Surprise me
@@ -1594,7 +1595,7 @@ export default function CreateStory() {
                       onClick={() => {
                         // Go back to interests step — discard draft
                         if (draftStoryId) {
-                          axios.delete(`${API}/stories/${draftStoryId}`).catch(() => {});
+                          deleteDoc(firestoreDoc(db, "stories", draftStoryId)).catch(() => {});
                         }
                         setDraftStoryId(null);
                         setEditedPages([]);
@@ -1610,7 +1611,7 @@ export default function CreateStory() {
                       data-testid="btn-change-language"
                       onClick={() => {
                         if (draftStoryId) {
-                          axios.delete(`${API}/stories/${draftStoryId}`).catch(() => {});
+                          deleteDoc(firestoreDoc(db, "stories", draftStoryId)).catch(() => {});
                         }
                         setDraftStoryId(null);
                         setEditedPages([]);
@@ -1626,7 +1627,7 @@ export default function CreateStory() {
                       data-testid="btn-regenerate-draft"
                       onClick={() => {
                         if (draftStoryId) {
-                          axios.delete(`${API}/stories/${draftStoryId}`).catch(() => {});
+                          deleteDoc(firestoreDoc(db, "stories", draftStoryId)).catch(() => {});
                         }
                         setDraftStoryId(null);
                         setEditedPages([]);

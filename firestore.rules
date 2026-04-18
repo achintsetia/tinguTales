@@ -27,6 +27,12 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Stories — users can read/delete their own; writes via Cloud Functions only
+    match /stories/{storyId} {
+      allow read, delete: if request.auth != null && resource.data.user_id == request.auth.uid;
+      allow write: if false;
+    }
+
     // All other collections are locked down by default
     match /{document=**} {
       allow read, write: if false;

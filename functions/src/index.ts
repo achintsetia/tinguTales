@@ -11,3 +11,5 @@ export {listGeminiModels} from "./listGeminiModels.js";
 export {getUserUploads, syncUploadUrls} from "./getUserUploads.js";
 export {deleteUserUpload} from "./deleteUserUpload.js";
 export {transliterateChildName} from "./transliterateChildName.js";
+export {generateStoryDraft} from "./generateStoryDraft.js";
+export {approveStoryDraft} from "./approveStoryDraft.js";
