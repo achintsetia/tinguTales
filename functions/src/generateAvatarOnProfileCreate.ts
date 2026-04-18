@@ -6,7 +6,7 @@ import {generateAvatar} from "./avatarGeneration.js";
 export const generateAvatarOnProfileCreate = onDocumentCreated(
   {
     document: "child_profiles/{profileId}",
-    timeoutSeconds: 300,
+    timeoutSeconds: 120,
     memory: "1GiB",
   },
   async (event) => {

@@ -436,14 +436,14 @@ async function runScenePipeline(storyId: string): Promise<void> {
 
   void recordTokenConsumption(userId, "scene_generation", "gemini", totalTokens);
 
-  // ── Step 4: Save character card + advance to cover generation ────────────
+  // ── Step 4: Save character card + advance to image generation ────────────
   await storyRef.update({
     character_card: characterCard,
-    status: "generating_cover",
+    status: "generating_images",
     updated_at: FieldValue.serverTimestamp(),
   });
 
-  logger.info(`[generateScenes] complete — storyId=${storyId} status=generating_cover`);
+  logger.info(`[generateScenes] complete — storyId=${storyId} status=generating_images`);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -532,6 +532,6 @@ export const retrySceneGeneration = onCall<{storyId: string}>(
       throw new HttpsError("internal", "Scene generation failed. Please try again.");
     }
 
-    return {storyId, status: "generating_cover"};
+    return {storyId, status: "generating_images"};
   }
 );

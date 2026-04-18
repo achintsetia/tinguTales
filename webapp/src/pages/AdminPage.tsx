@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { db } from "../firebase";
 import { getFunctions, httpsCallable } from "firebase/functions";
-import { collection, getDocs, doc, getDoc, setDoc, query, orderBy } from "firebase/firestore";
+import { collection, getDocs, doc, getDoc, setDoc, query, orderBy, where } from "firebase/firestore";
 import { toast } from "sonner";
 import { Button } from "../components/ui/button";
 import { Card, CardContent } from "../components/ui/card";
@@ -11,7 +11,8 @@ import { Badge } from "../components/ui/badge";
 import { Switch } from "../components/ui/switch";
 import {
   ArrowLeft, Trash2, RefreshCw, DollarSign, Users, BookOpen,
-  Activity, AlertCircle, CheckCircle, Clock, Sparkles, Undo2, Bot, ChevronDown, ChevronUp
+  Activity, AlertCircle, CheckCircle, Clock, Sparkles, Undo2, Bot, ChevronDown, ChevronUp, IndianRupee,
+  RotateCcw, FileText, Image
 } from "lucide-react";
 
 export default function AdminPage() {
@@ -27,6 +28,15 @@ export default function AdminPage() {
   const [costReport, setCostReport] = useState<any>(null);
   const [loadingCosts, setLoadingCosts] = useState(false);
   const [expandedUser, setExpandedUser] = useState<string | null>(null);
+
+  // Tasks tab state
+  const [activeStories, setActiveStories] = useState<any[]>([]);
+  const [loadingTasks, setLoadingTasks] = useState(false);
+  const [expandedStory, setExpandedStory] = useState<string | null>(null);
+  const [storyPages, setStoryPages] = useState<Record<string, any[]>>({});
+  const [loadingPages, setLoadingPages] = useState<string | null>(null);
+  const [retryingPage, setRetryingPage] = useState<string | null>(null);
+  const [retryingPdf, setRetryingPdf] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user?.is_admin) {
@@ -105,12 +115,109 @@ export default function AdminPage() {
     }
   };
 
+  const ACTIVE_STATUSES = ["approved", "generating_scenes", "generating_images", "creating_pdf", "scenes_failed"];
+
+  const fetchActiveTasks = async () => {
+    setLoadingTasks(true);
+    try {
+      const snaps = await Promise.all(
+        ACTIVE_STATUSES.map((s) =>
+          getDocs(query(collection(db, "stories"), where("status", "==", s)))
+        )
+      );
+      const stories = snaps.flatMap((snap) =>
+        snap.docs.map((d) => ({ story_id: d.id, ...d.data() }))
+      );
+      stories.sort((a: any, b: any) => {
+        const at = a.updated_at?.toMillis?.() ?? 0;
+        const bt = b.updated_at?.toMillis?.() ?? 0;
+        return bt - at;
+      });
+      setActiveStories(stories);
+    } catch (e) {
+      toast.error("Failed to load active tasks");
+    } finally {
+      setLoadingTasks(false);
+    }
+  };
+
+  const loadStoryPages = async (storyId: string) => {
+    setLoadingPages(storyId);
+    try {
+      const snap = await getDocs(
+        query(collection(db, "stories", storyId, "pages"), orderBy("page", "asc"))
+      );
+      const pages = snap.docs.map((d) => ({ page_doc_id: d.id, ...d.data() }));
+      setStoryPages((prev) => ({ ...prev, [storyId]: pages }));
+    } catch (e) {
+      toast.error("Failed to load pages");
+    } finally {
+      setLoadingPages(null);
+    }
+  };
+
+  const handleExpandStory = (storyId: string) => {
+    if (expandedStory === storyId) {
+      setExpandedStory(null);
+      return;
+    }
+    setExpandedStory(storyId);
+    if (!storyPages[storyId]) loadStoryPages(storyId);
+  };
+
+  const handleRetryPage = async (storyId: string, pageDocId: string) => {
+    setRetryingPage(pageDocId);
+    try {
+      const fns = getFunctions(undefined, "asia-south1");
+      const fn = httpsCallable(fns, "adminRetryPageImage");
+      await fn({ storyId, pageId: pageDocId });
+      toast.success("Page re-queued");
+      await loadStoryPages(storyId);
+    } catch (e: any) {
+      toast.error(e?.message ?? "Retry failed");
+    } finally {
+      setRetryingPage(null);
+    }
+  };
+
+  const handleRetryPdf = async (storyId: string) => {
+    setRetryingPdf(storyId);
+    try {
+      const fns = getFunctions(undefined, "asia-south1");
+      const fn = httpsCallable(fns, "adminRetryPdf");
+      await fn({ storyId });
+      toast.success("PDF generation re-queued");
+      await fetchActiveTasks();
+    } catch (e: any) {
+      toast.error(e?.message ?? "Retry failed");
+    } finally {
+      setRetryingPdf(null);
+    }
+  };
+
   const TABS = [
     { id: "overview", label: "Overview" },
+    { id: "tasks", label: "Tasks" },
     { id: "jobs", label: "Jobs" },
     { id: "payments", label: "Payments" },
     { id: "costs", label: "Costs" },
   ];
+
+  const PAGE_STATUS_COLORS: Record<string, string> = {
+    pending: "bg-[#FF9F1C]/15 text-[#FF9F1C]",
+    processing: "bg-[#3730A3]/15 text-[#3730A3]",
+    completed: "bg-[#2A9D8F]/15 text-[#2A9D8F]",
+    failed: "bg-[#E76F51]/15 text-[#E76F51]",
+  };
+
+  const STORY_STATUS_COLORS: Record<string, string> = {
+    approved: "bg-[#3730A3]/15 text-[#3730A3]",
+    generating_scenes: "bg-[#FF9F1C]/15 text-[#FF9F1C]",
+    generating_images: "bg-[#FF9F1C]/15 text-[#FF9F1C]",
+    creating_pdf: "bg-[#FF9F1C]/15 text-[#FF9F1C]",
+    scenes_failed: "bg-[#E76F51]/15 text-[#E76F51]",
+    failed: "bg-[#E76F51]/15 text-[#E76F51]",
+  };
 
   const JOB_STATUS_COLORS = {
     pending: "bg-[#FF9F1C]/15 text-[#FF9F1C]",
@@ -156,6 +263,7 @@ export default function AdminPage() {
               onClick={() => {
                 setTab(t.id);
                 if (t.id === "costs" && !costReport) fetchCosts();
+                if (t.id === "tasks") fetchActiveTasks();
               }}
               className={`rounded-full px-5 py-2.5 text-sm font-semibold transition-all ${
                 tab === t.id
@@ -172,6 +280,13 @@ export default function AdminPage() {
           >
             <Bot className="w-4 h-4" strokeWidth={2.5} />
             Models
+          </button>
+          <button
+            onClick={() => navigate("/admin/pricing")}
+            className="rounded-full px-5 py-2.5 text-sm font-semibold transition-all bg-white text-[#FF9F1C]/80 border-2 border-[#F3E8FF] hover:border-[#FF9F1C]/40 flex items-center gap-1.5"
+          >
+            <IndianRupee className="w-4 h-4" strokeWidth={2.5} />
+            Pricing
           </button>
         </div>
 
@@ -220,6 +335,148 @@ export default function AdminPage() {
           </div>
 
         </>
+        )}
+
+        {/* Tasks Tab */}
+        {tab === "tasks" && (
+          <div data-testid="admin-tasks">
+            <div className="flex items-center justify-between mb-4">
+              <p className="text-sm text-[#1E1B4B]/50">{activeStories.length} active stories</p>
+              <Button
+                variant="outline"
+                onClick={fetchActiveTasks}
+                disabled={loadingTasks}
+                className="rounded-full border-[#F3E8FF]"
+              >
+                <RefreshCw className={`w-4 h-4 mr-2 ${loadingTasks ? "animate-spin" : ""}`} strokeWidth={2} />
+                Refresh
+              </Button>
+            </div>
+
+            {loadingTasks && (
+              <div className="flex items-center justify-center py-12 text-[#1E1B4B]/40">
+                <RefreshCw className="w-5 h-5 animate-spin mr-2" />
+                Loading tasks…
+              </div>
+            )}
+
+            {!loadingTasks && activeStories.length === 0 && (
+              <p className="text-center py-12 text-[#1E1B4B]/40">No active tasks</p>
+            )}
+
+            <div className="space-y-3">
+              {activeStories.map((story) => {
+                const isExpanded = expandedStory === story.story_id;
+                const pages: any[] = storyPages[story.story_id] ?? [];
+                const completedCount = pages.filter((p) => p.status === "completed").length;
+                const stuckCount = pages.filter((p) => p.status === "pending" || p.status === "processing").length;
+                const allPagesCompleted = pages.length > 0 && pages.every((p) => p.status === "completed");
+
+                return (
+                  <Card key={story.story_id} className="rounded-2xl border-2 border-[#F3E8FF]">
+                    <CardContent className="p-4">
+                      {/* Story header row */}
+                      <div className="flex items-center gap-3">
+                        <Badge className={`${STORY_STATUS_COLORS[story.status] ?? "bg-[#F3E8FF] text-[#1E1B4B]/50"} rounded-full px-2.5 py-0.5 text-xs font-semibold border-0 flex-shrink-0`}>
+                          {story.status}
+                        </Badge>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold text-[#1E1B4B] truncate">
+                            {story.title || story.story_id}
+                          </p>
+                          <p className="text-xs text-[#1E1B4B]/40 font-mono">{story.story_id}</p>
+                        </div>
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          {/* PDF retry */}
+                          {allPagesCompleted && story.status !== "completed" && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={retryingPdf === story.story_id}
+                              onClick={() => handleRetryPdf(story.story_id)}
+                              className="rounded-full border-[#FF9F1C]/30 text-[#FF9F1C] hover:bg-[#FF9F1C]/10 text-xs h-8 gap-1.5"
+                            >
+                              <FileText className="w-3 h-3" strokeWidth={2.5} />
+                              {retryingPdf === story.story_id ? "Queuing…" : "Retry PDF"}
+                            </Button>
+                          )}
+                          {/* Expand button */}
+                          <button
+                            onClick={() => handleExpandStory(story.story_id)}
+                            className="p-1.5 rounded-xl text-[#1E1B4B]/40 hover:text-[#1E1B4B] hover:bg-[#F3E8FF] transition-colors"
+                          >
+                            {isExpanded ? <ChevronUp className="w-4 h-4" strokeWidth={2.5} /> : <ChevronDown className="w-4 h-4" strokeWidth={2.5} />}
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Expanded pages section */}
+                      {isExpanded && (
+                        <div className="mt-4 border-t border-[#F3E8FF] pt-4">
+                          {loadingPages === story.story_id ? (
+                            <div className="flex items-center gap-2 text-[#1E1B4B]/40 text-sm py-2">
+                              <RefreshCw className="w-4 h-4 animate-spin" />
+                              Loading pages…
+                            </div>
+                          ) : pages.length === 0 ? (
+                            <p className="text-sm text-[#1E1B4B]/40 py-2">No pages found in subcollection yet</p>
+                          ) : (
+                            <>
+                              <div className="flex items-center justify-between mb-3">
+                                <p className="text-xs text-[#1E1B4B]/50 font-semibold uppercase tracking-wider">
+                                  {completedCount}/{pages.length} pages done
+                                  {stuckCount > 0 && ` · ${stuckCount} stuck`}
+                                </p>
+                                <button
+                                  onClick={() => loadStoryPages(story.story_id)}
+                                  className="text-xs text-[#3730A3]/60 hover:text-[#3730A3] flex items-center gap-1"
+                                >
+                                  <RefreshCw className="w-3 h-3" strokeWidth={2.5} />
+                                  Reload
+                                </button>
+                              </div>
+                              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                                {pages.map((page) => {
+                                  const isStuck = page.status === "pending" || page.status === "processing";
+                                  const isFailed = page.status === "failed";
+                                  const canRetry = isStuck || isFailed;
+                                  const label = page.page === 0 ? "Cover" : page.page === story.page_count - 1 ? "Back" : `Pg ${page.page}`;
+                                  return (
+                                    <div
+                                      key={page.page_doc_id}
+                                      className="flex items-center justify-between gap-2 rounded-xl border border-[#F3E8FF] bg-[#FDFBF7] px-3 py-2"
+                                    >
+                                      <div className="flex items-center gap-2 min-w-0">
+                                        <Image className="w-3.5 h-3.5 text-[#1E1B4B]/30 flex-shrink-0" strokeWidth={2} />
+                                        <span className="text-xs font-medium text-[#1E1B4B] truncate">{label}</span>
+                                        <Badge className={`${PAGE_STATUS_COLORS[page.status] ?? "bg-[#F3E8FF] text-[#1E1B4B]/40"} rounded-full px-2 py-0 text-[10px] font-semibold border-0 flex-shrink-0`}>
+                                          {page.status ?? "unknown"}
+                                        </Badge>
+                                      </div>
+                                      {canRetry && (
+                                        <button
+                                          disabled={retryingPage === page.page_doc_id}
+                                          onClick={() => handleRetryPage(story.story_id, page.page_doc_id)}
+                                          className="flex-shrink-0 p-1 rounded-lg text-[#E76F51] hover:bg-[#E76F51]/10 disabled:opacity-50 transition-colors"
+                                          title="Retry this page"
+                                        >
+                                          <RotateCcw className={`w-3.5 h-3.5 ${retryingPage === page.page_doc_id ? "animate-spin" : ""}`} strokeWidth={2.5} />
+                                        </button>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+          </div>
         )}
 
         {/* Jobs Tab */}

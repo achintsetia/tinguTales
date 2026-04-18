@@ -260,7 +260,7 @@ async function planStory(
   const pagesJson = [
     "    {\"page\": 0, \"type\": \"cover\", \"description\": \"What the cover shows\"}",
     ...beats.map((beat, i) => `    {"page": ${i + 1}, "type": "story", "description": "${beat}"}`),
-    `    {"page": ${numPages - 1}, "type": "back_cover", "description": "Back cover: warm closing message with lesson summary and TinguTales.com branding"}`,
+    `    {"page": ${numPages - 1}, "type": "back_cover", "description": "Back cover: warm closing message with lesson summary"}`,
 
   ].join(",\n");
 
@@ -279,7 +279,7 @@ async function planStory(
     `Create a story with exactly ${numPages} pages:\n` +
     `- Page 0: FRONT COVER — title prominently featuring ${childName}'s name and a subtitle hinting at the adventure\n` +
     `- Pages 1-${numPages - 2}: Story pages (${beats.join(", ")}) — the learning arc builds gradually across these pages\n` +
-    `- Page ${numPages - 1}: BACK COVER + BRANDING — warm English closing message with lesson summary, then TinguTales.com branding on its own line\n\n` +
+    `- Page ${numPages - 1}: BACK COVER — warm English closing message with lesson summary\n\n` +
     "The story must:\n" +
     `- Feature ${childName} as the brave, curious main character\n` +
     `- Show ${childName} NOT knowing the lesson → encountering a challenge → learning by doing\n` +
@@ -368,7 +368,7 @@ async function writeStory(
     Array.from({length: numPages}, (_, i) => {
       let label: string;
       if (i === 0) label = "Cover text";
-      else if (i === numPages - 1) label = "Back cover + TinguTales.com branding (English only)";
+      else if (i === numPages - 1) label = "Back cover (English only)";
       else label = `Page ${i} text`;
       const pageLanguage = i === numPages - 1 ? "English" : languageName;
       return `  {"page": ${i}, "text": "${label} in ${pageLanguage}"}`;
@@ -400,15 +400,7 @@ async function writeStory(
     "COVER, BACK COVER & BRANDING RULES:\n" +
     "- Page 0 (Front Cover): Title text = story title. Below it, a short tagline (max 8 words) that\n" +
     `  names ${childName} and hints at the adventure. Example: "${childName} and the Magic Garden".\n` +
-    `- Page ${numPages - 1} (Back Cover + Branding): MUST be in English only. Two parts:\n` +
-    `  PART 1 — Back cover: Start with "${lessonPhrase}". Then 1-2 warm sentences inviting the reader\n` +
-    `  to try the lesson too. Include the exact name "${childEnglishName}" at least once.\n` +
-    "  PART 2 — Branding: On a new line, write a creative, magical, child-friendly sentence that\n" +
-    "  mentions TinguTales.com. Examples:\n" +
-    "    \"Every child has a story. Create yours at TinguTales.com ✨\"\n" +
-    `    "This story was made just for ${childEnglishName} with love at TinguTales.com 🌟"\n` +
-    "    \"Your next adventure is waiting... TinguTales.com 🚀\"\n" +
-    "  Always end with TinguTales.com on its own line.\n\n" +
+    `- Page ${numPages - 1} (Back Cover): MUST be in English only. Start with "${lessonPhrase}". Then 1-2 warm sentences inviting the reader to try the lesson too. Include the exact name "${childEnglishName}" at least once.\n\n` +
     "Story Outline:\n" +
     `Title: ${outline.title}\n` +
     `Synopsis: ${outline.synopsis}\n` +
@@ -430,7 +422,7 @@ async function writeStory(
         "For Hindi/Marathi use Devanagari script, Kannada use Kannada script, Tamil use Tamil script, " +
         "Telugu use Telugu script, Bengali use Bengali script, Gujarati use Gujarati script, " +
         "Malayalam use Malayalam script. If language is English, write in simple engaging English.\n\n" +
-        `Page rule override: page ${numPages - 1} (back cover + branding) must be English only.\n\n` +
+        `Page rule override: page ${numPages - 1} (back cover) must be English only.\n\n` +
         "CORE STORYTELLING PRINCIPLE: Every story MUST have a learning arc. The child character " +
         "starts without knowing the lesson, faces a real challenge, learns through experience " +
         "(shown — never told), and ends feeling proud and capable. The reader should close the " +
@@ -652,6 +644,27 @@ async function qaAndNaturalize(
 
   const sarvamTokens = json.usage?.total_tokens ?? 0;
 
+  // Log per-page diffs so we can see exactly what Sarvam changed
+  const originalMap = new Map<number, string>(storyOnlyPages.map((p) => [p.page, p.text]));
+  for (const corrected of (parsed.pages ?? [])) {
+    const original = originalMap.get(corrected.page) ?? "";
+    if (corrected.text !== original) {
+      logger.info(`[qaAndNaturalize] page ${corrected.page} changed`, {
+        page: corrected.page,
+        before: original.slice(0, 300),
+        after: corrected.text.slice(0, 300),
+      });
+    } else {
+      logger.info(`[qaAndNaturalize] page ${corrected.page} unchanged`);
+    }
+  }
+  if (parsed.corrected_title && parsed.corrected_title !== storyTitle) {
+    logger.info("[qaAndNaturalize] title changed", {before: storyTitle, after: parsed.corrected_title});
+  }
+  if (parsed.corrected_subtitle && parsed.corrected_subtitle !== storySubtitle) {
+    logger.info("[qaAndNaturalize] subtitle changed", {before: storySubtitle, after: parsed.corrected_subtitle});
+  }
+
   logger.info("[qaAndNaturalize] completed", {
     correctedPages: parsed.pages?.length ?? 0,
     issuesCount: parsed.issues?.length ?? 0,
@@ -850,6 +863,8 @@ export const generateStoryDraft = onCall<GenerateStoryDraftRequest>(
       let draftPages = rawPages;
       let finalTitle = outline.title;
       let finalSubtitle = outline.subtitle ?? "";
+      let qaSuccess: boolean | null = null;
+      let qaIssues: string[] = [];
       if (sarvamApiKey) {
         logger.info(`[generateStoryDraft] [${storyId}] step 4/4 — QA & naturalizing with Sarvam`);
         try {
@@ -859,6 +874,8 @@ export const generateStoryDraft = onCall<GenerateStoryDraftRequest>(
           draftPages = qaResult.pages;
           if (qaResult.title) finalTitle = qaResult.title;
           if (qaResult.subtitle) finalSubtitle = qaResult.subtitle;
+          qaIssues = qaResult.issues;
+          qaSuccess = true;
           if (qaResult.issues.length > 0) {
             logger.info(`[generateStoryDraft] [${storyId}] QA issues fixed: ${qaResult.issues.join("; ")}`);
           }
@@ -869,6 +886,7 @@ export const generateStoryDraft = onCall<GenerateStoryDraftRequest>(
           });
         } catch (qaErr) {
           // QA is best-effort — fall back to raw Gemini pages if Sarvam fails
+          qaSuccess = false;
           logger.warn(`[generateStoryDraft] [${storyId}] Sarvam QA failed, using raw pages: ${qaErr}`);
         }
       } else {
@@ -891,13 +909,11 @@ export const generateStoryDraft = onCall<GenerateStoryDraftRequest>(
         const hasEnglishName = childEnglishName ?
           backText.toLowerCase().includes(childEnglishName.toLowerCase()) :
           true;
-        const hasBranding = backText.toLowerCase().includes("tingutales.com");
-        if (hasNonAscii || !hasEnglishName || !hasBranding) {
+        if (hasNonAscii || !hasEnglishName) {
           const safeMoral = String(outline.moral ?? "").trim() || "kindness makes every adventure brighter";
           backCoverPage.text =
             `${childEnglishName} learned an important lesson today: ${safeMoral}. ` +
-            "Try it in your own adventure too!\n\n" +
-            `This story was made just for ${childEnglishName} with love at TinguTales.com 🌟\nTinguTales.com`;
+            "Try it in your own adventure too!";
           logger.info(`[generateStoryDraft] [${storyId}] back cover normalized to English policy`);
         }
       }
@@ -915,6 +931,8 @@ export const generateStoryDraft = onCall<GenerateStoryDraftRequest>(
         synopsis: outline.synopsis ?? "",
         moral: outline.moral ?? "",
         draft_pages: draftPages,
+        qa_success: qaSuccess,
+        qa_issues: qaIssues,
         updated_at: FieldValue.serverTimestamp(),
       }, {merge: true});
 
@@ -925,6 +943,8 @@ export const generateStoryDraft = onCall<GenerateStoryDraftRequest>(
         subtitle: finalSubtitle,
         draftPages,
         status: "draft_ready",
+        qaSuccess,
+        qaIssues,
       };
     } catch (err) {
       await storyRef.set({

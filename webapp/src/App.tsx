@@ -9,6 +9,7 @@ import CreateStory from "./pages/CreateStory";
 import StoryViewer from "./pages/StoryViewer";
 import AdminPage from "./pages/AdminPage";
 import ModelConfigPage from "./pages/ModelConfigPage";
+import PricingConfigPage from "./pages/PricingConfigPage";
 import PaymentHistory from "./pages/PaymentHistory";
 
 function AppRouter() {
@@ -60,6 +61,14 @@ function AppRouter() {
         element={
           <ProtectedRoute>
             <ModelConfigPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/pricing"
+        element={
+          <ProtectedRoute>
+            <PricingConfigPage />
           </ProtectedRoute>
         }
       />

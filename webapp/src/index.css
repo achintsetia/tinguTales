@@ -81,3 +81,29 @@
 .font-telugu { font-family: 'Noto Sans Telugu', sans-serif; }
 .font-bengali { font-family: 'Noto Sans Bengali', sans-serif; }
 .font-marathi { font-family: 'Noto Sans Devanagari', sans-serif; }
+
+/* Shimmer placeholder — gradient sweep across the element */
+.animate-shimmer {
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.55) 50%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.8s ease-in-out infinite;
+}
+
+/* keyframes also available to inline style="animation: ..." references */
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+@keyframes sparkle {
+  0%, 100% { opacity: 0; transform: scale(0.7); }
+  50%       { opacity: 1; transform: scale(1.2); }
+}
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50%       { transform: translateY(-8px); }
+}

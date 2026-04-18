@@ -14,6 +14,7 @@ import {
   Plane, Train, Crown, Zap, ChefHat, Gamepad2, Cat, Trash2, Shuffle,
   Flame, Sun, Mountain, Feather, Tent, Lamp, BookHeart, Drama,
   AlertCircle, RotateCcw, Gift, Trophy, GraduationCap, PartyPopper,
+  CheckCircle2,
 } from "lucide-react";
 import { db, storage, functions } from "../firebase";
 import { collection, query, where, onSnapshot, deleteDoc, doc as firestoreDoc, updateDoc, getDoc, setDoc } from "firebase/firestore";
@@ -248,6 +249,8 @@ export default function CreateStory() {
   const [draftTitle, setDraftTitle] = useState("");
   const [draftSubtitle, setDraftSubtitle] = useState("");
   const [editedPages, setEditedPages] = useState([]);
+  const [qaSuccess, setQaSuccess] = useState<boolean | null>(null);
+  const [qaIssues, setQaIssues] = useState<string[]>([]);
   const [loadingStep, setLoadingStep] = useState(0);
   const loadingTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   const [approving, setApproving] = useState(false);
@@ -348,6 +351,7 @@ export default function CreateStory() {
   // ── Restore from URL storyId (/create/:storyId) ────────────────────────
   // Runs once when profiles are loaded and a URL storyId is present
   const urlRestoredRef = useRef(false);
+  const wizardRestoredRef = useRef(false);
   useEffect(() => {
     if (!urlStoryId || urlRestoredRef.current || profiles.length === 0) return;
     urlRestoredRef.current = true;
@@ -394,19 +398,30 @@ export default function CreateStory() {
   }, [step, selectedProfile, selectedLang, selectedInterests, selectedTemplate, pageCount, customIncident, nativeChildName, draftStoryId, draftTitle]);
 
   // Save state after each meaningful step change (including when draft ID arrives)
+  // Also save at step 1 so navigating back overwrites any stale higher-step entry in localStorage
   useEffect(() => {
-    if (step >= 2 && selectedProfile) saveWizardState();
+    if (step >= 1 && selectedProfile) saveWizardState();
   }, [step, selectedProfile, selectedLang, selectedInterests, pageCount, draftStoryId, saveWizardState]);
 
   // Restore wizard state on mount
   useEffect(() => {
+    // Only restore once — re-running on every profile Firestore update would jump the user
+    // back to a previously saved step (e.g. after avatar status changes trigger onSnapshot)
+    if (wizardRestoredRef.current) return;
     const raw = localStorage.getItem(WIZARD_KEY);
-    if (!raw) return;
+    if (!raw) {
+      // Nothing to restore — mark done so this never re-runs
+      wizardRestoredRef.current = true;
+      return;
+    }
+    // Wait until profiles have loaded before restoring
+    if (profiles.length === 0) return;
     try {
       const saved = JSON.parse(raw);
       // Only restore if saved within last 24 hours
       if (saved.savedAt && (Date.now() - new Date(saved.savedAt).getTime()) > 24 * 60 * 60 * 1000) {
         localStorage.removeItem(WIZARD_KEY);
+        wizardRestoredRef.current = true;
         return;
       }
       // Restore after profiles load
@@ -430,6 +445,7 @@ export default function CreateStory() {
         if (saved.step && saved.step >= 2 && saved.step <= 5) {
           setStep(saved.step);
         }
+        wizardRestoredRef.current = true;
       }, 500);
       return () => clearTimeout(restoreTimeout);
     } catch { /* ignore parse errors */ }
@@ -487,7 +503,7 @@ export default function CreateStory() {
     e.stopPropagation();
     try {
       const retryFn = httpsCallable(functions, "retryAvatarGeneration");
-      await retryFn({ profile_id: profileId });
+      await retryFn({ profileId });
       toast.info("Retrying avatar generation...");
     } catch (e) {
       toast.error("Failed to start retry");
@@ -572,7 +588,7 @@ export default function CreateStory() {
           customIncident?: string; nativeChildName?: string;
           templateTitle?: string; templateDesc?: string;
         },
-        {storyId: string; title: string; titleEnglish: string; subtitle?: string; draftPages: {page: number; text: string; cover_title?: string; cover_subtitle?: string; page_type?: string; avatar_url?: string}[]; status: string}
+        {storyId: string; title: string; titleEnglish: string; subtitle?: string; draftPages: {page: number; text: string; cover_title?: string; cover_subtitle?: string; page_type?: string; avatar_url?: string}[]; status: string; qaSuccess?: boolean | null; qaIssues?: string[]}
       >(functions, "generateStoryDraft", {timeout: 570000}); // 9.5 min client timeout
 
       const activeTemplate = selectedTemplate
@@ -600,6 +616,8 @@ export default function CreateStory() {
       setDraftTitle(title);
       setDraftSubtitle(result.data.subtitle || "");
       setEditedPages(draftPages);
+      setQaSuccess(result.data.qaSuccess ?? null);
+      setQaIssues(result.data.qaIssues ?? []);
       setDraftStatus("draft_ready");
       setDraftLoading(false);
       // Update URL to /create/:storyId so the session is bookmarkable/resumable
@@ -661,6 +679,8 @@ export default function CreateStory() {
                 cover_subtitle: p.cover_subtitle,
                 avatar_url: p.avatar_url,
               })));
+              setQaSuccess(typeof data.qa_success === "boolean" ? data.qa_success : null);
+              setQaIssues(Array.isArray(data.qa_issues) ? data.qa_issues : []);
               setDraftStatus("draft_ready");
               setDraftLoading(false);
               // Ensure URL reflects this story ID
@@ -689,6 +709,8 @@ export default function CreateStory() {
       setDraftTitle("");
       setDraftSubtitle("");
       setEditedPages([]);
+      setQaSuccess(null);
+      setQaIssues([]);
       setApproving(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -728,6 +750,12 @@ export default function CreateStory() {
   }, [draftLoading]);
 
   const canProceed = () => {
+    if (step === 1) {
+      if (!selectedProfile) return false;
+      if (selectedProfile.avatar_status === "pending" || selectedProfile.avatar_status === "generating") return false;
+      if (selectedProfile.avatar_status === "failed") return false;
+      return true;
+    }
     if (step === 2) return !!selectedLang;
     if (step === 3) return selectedInterests.length > 0;
     if (step === 4) return true;
@@ -876,26 +904,40 @@ export default function CreateStory() {
 
         {/* Back / Next — sticky below progress bar */}
         {step < 5 && (
-          <div className="sticky top-[69px] z-40 -mx-6 px-6 py-3 mb-6 bg-[#FDFBF7]/90 backdrop-blur-md border-b border-[#F3E8FF] flex items-center justify-between">
-            <Button
-              data-testid="btn-step-back"
-              variant="ghost"
-              onClick={() => setStep((s) => Math.max(1, s - 1))}
-              disabled={step === 1 || approving}
-              className="rounded-full text-[#1E1B4B]/60 hover:text-[#1E1B4B] disabled:opacity-30 h-9 px-4 text-sm"
-            >
-              <ArrowLeft className="w-4 h-4 mr-1.5" strokeWidth={2.5} />
-              Back
-            </Button>
-            <Button
-              data-testid="btn-step-next"
-              onClick={() => setStep((s) => Math.min(5, s + 1))}
-              disabled={!canProceed()}
-              className="rounded-full bg-[#FF9F1C] hover:bg-[#E88A12] text-[#1E1B4B] font-bold px-6 h-9 text-sm disabled:opacity-30"
-            >
-              Next
-              <ArrowRight className="w-4 h-4 ml-1.5" strokeWidth={2.5} />
-            </Button>
+          <div className="sticky top-[69px] z-40 -mx-6 px-6 py-3 mb-6 bg-[#FDFBF7]/90 backdrop-blur-md border-b border-[#F3E8FF]">
+            <div className="flex items-center justify-between">
+              <Button
+                data-testid="btn-step-back"
+                variant="ghost"
+                onClick={() => setStep((s) => Math.max(1, s - 1))}
+                disabled={step === 1 || approving}
+                className="rounded-full text-[#1E1B4B]/60 hover:text-[#1E1B4B] disabled:opacity-30 h-9 px-4 text-sm"
+              >
+                <ArrowLeft className="w-4 h-4 mr-1.5" strokeWidth={2.5} />
+                Back
+              </Button>
+              <Button
+                data-testid="btn-step-next"
+                onClick={() => setStep((s) => Math.min(5, s + 1))}
+                disabled={!canProceed()}
+                className="rounded-full bg-[#FF9F1C] hover:bg-[#E88A12] text-[#1E1B4B] font-bold px-6 h-9 text-sm disabled:opacity-30"
+              >
+                Next
+                <ArrowRight className="w-4 h-4 ml-1.5" strokeWidth={2.5} />
+              </Button>
+            </div>
+            {step === 1 && selectedProfile && (selectedProfile.avatar_status === "pending" || selectedProfile.avatar_status === "generating") && (
+              <p className="text-center text-xs text-[#FF9F1C] mt-2 flex items-center justify-center gap-1">
+                <Sparkles className="w-3 h-3 animate-spin" />
+                Creating {selectedProfile.name}&apos;s avatar — please wait a moment before continuing
+              </p>
+            )}
+            {step === 1 && selectedProfile?.avatar_status === "failed" && (
+              <p className="text-center text-xs text-[#E76F51] mt-2 flex items-center justify-center gap-1">
+                <AlertCircle className="w-3 h-3" />
+                Avatar generation failed — please retry before continuing
+              </p>
+            )}
           </div>
         )}
 
@@ -1703,6 +1745,21 @@ export default function CreateStory() {
                     </button>
                   </div>
                 </div>
+
+                {/* QA status badge — only shown on success */}
+                {qaSuccess === true && (
+                  <div className="flex justify-center mt-3 mb-1">
+                    <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#2A9D8F] bg-[#2A9D8F]/10 rounded-full px-3 py-1">
+                      <CheckCircle2 className="w-3.5 h-3.5" strokeWidth={2.5} />
+                      QA passed
+                      {qaIssues.length > 0 && (
+                        <span className="text-[#2A9D8F]/70 font-normal ml-0.5">
+                          · {qaIssues.length} issue{qaIssues.length !== 1 ? "s" : ""} fixed
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )}
 
                 <p className="text-[#1E1B4B]/50 mt-0 mb-6 text-sm text-center">
                   Edit any page text below, then approve to create the illustrated storybook

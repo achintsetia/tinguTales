@@ -54,8 +54,7 @@ export const approveStoryDraft = onCall<ApproveStoryDraftRequest>(
 
       const fallback =
         `${childEnglishName} learned an important lesson today. ` +
-        "Try it in your own adventure too!\n\n" +
-        `This story was made just for ${childEnglishName} with love at TinguTales.com 🌟\nTinguTales.com`;
+        "Try it in your own adventure too!\n\n";
       return {...p, text: fallback};
     });
 

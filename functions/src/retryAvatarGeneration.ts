@@ -8,7 +8,7 @@ interface RetryAvatarData {
 }
 
 export const retryAvatarGeneration = onCall(
-  {timeoutSeconds: 300, memory: "1GiB"},
+  {timeoutSeconds: 120, memory: "1GiB"},
   async (request) => {
     if (!request.auth) {
       throw new HttpsError("unauthenticated", "You must be signed in.");

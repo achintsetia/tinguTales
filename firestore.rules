@@ -36,6 +36,13 @@ service cloud.firestore {
         && !request.resource.data.diff(resource.data).affectedKeys()
             .hasAny(['status', 'draft_pages', 'user_id', 'profile_id', 'created_at']);
       allow create, write: if false;
+
+      // Pages subcollection — owner can read (for real-time generation progress); writes via Cloud Functions only
+      match /pages/{pageId} {
+        allow read: if request.auth != null
+          && get(/databases/$(database)/documents/stories/$(storyId)).data.user_id == request.auth.uid;
+        allow write: if false;
+      }
     }
 
     // All other collections are locked down by default

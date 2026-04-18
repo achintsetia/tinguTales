@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { db, functions } from "../firebase";
-import { doc as firestoreDoc, onSnapshot } from "firebase/firestore";
+import { doc as firestoreDoc, collection, onSnapshot } from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
 import { toast } from "sonner";
 import { Button } from "../components/ui/button";
@@ -53,6 +53,8 @@ export default function StoryViewer() {
   const [preloading, setPreloading] = useState(true);  // waiting for images to cache
   const [zoomedPage, setZoomedPage] = useState(null);  // index of page shown in lightbox
   const [showReveal, setShowReveal] = useState(true);  // show back cover reveal before flipbook
+  const [livePages, setLivePages] = useState<{page_number: number; image_url: string | null; jpeg_url: string | null; text?: string; status?: string}[]>([]); // real-time page images from subcollection
+
   useEffect(() => {
     if (!storyId) return;
     const unsub = onSnapshot(
@@ -65,6 +67,31 @@ export default function StoryViewer() {
         console.error("Story listener error:", e);
         setLoading(false);
       }
+    );
+    return () => unsub();
+  }, [storyId]);
+
+  // Live pages subcollection listener — updates as each image is generated
+  useEffect(() => {
+    if (!storyId) return;
+    // Only listen during active generation or until completed
+    const unsub = onSnapshot(
+      collection(db, "stories", storyId, "pages"),
+      (snap) => {
+        const docs = snap.docs.map((d) => {
+          const data = d.data();
+          return {
+            page_number: data.page as number,
+            image_url: (data.image_url as string) ?? null,
+            jpeg_url: (data.jpeg_url as string) ?? null,
+            text: (data.text as string) ?? "",
+            status: (data.status as string) ?? "pending",
+          };
+        });
+        docs.sort((a, b) => a.page_number - b.page_number);
+        setLivePages(docs);
+      },
+      (e) => console.warn("Pages listener error:", e)
     );
     return () => unsub();
   }, [storyId]);
@@ -91,7 +118,11 @@ export default function StoryViewer() {
   }, [story?.status, currentPage, leavingPage]);
 
   const handleDownloadPDF = async () => {
-    toast.info("PDF download coming soon!");
+    if (story?.pdf_url) {
+      window.open(story.pdf_url, "_blank");
+    } else {
+      toast.info("PDF is being prepared, please check back shortly.");
+    }
   };
 
   const goToPage = (next) => {
@@ -103,8 +134,11 @@ export default function StoryViewer() {
     setCurrentPage(next);
   };
 
-  const sortedPages = () =>
-    [...(story?.pages || [])].sort((a, b) => a.page_number - b.page_number);
+  const sortedPages = () => {
+    // Prefer live subcollection pages (have image_url), fall back to story.pages
+    const source = livePages.length > 0 ? livePages : (story?.pages || []);
+    return [...source].sort((a, b) => a.page_number - b.page_number);
+  };
 
   // Prefer the compressed JPEG for browser display; fall back to PNG
   const pageImageUrl = (p) => {
@@ -116,7 +150,7 @@ export default function StoryViewer() {
   // (page images are rendered as hidden DOM nodes — see below — so the
   //  browser keeps them decoded. We only need to wait for page 0.)
   useEffect(() => {
-    if (story?.status !== "completed" || !story?.pages?.length) return;
+    if (story?.status !== "completed") return;
     setPreloading(true);
   }, [story?.status]);
 
@@ -124,40 +158,40 @@ export default function StoryViewer() {
   if (loading || (story && story.status !== "completed" && story.status !== "failed" && story.status !== "scenes_failed")) {
     const pageCount = story?.page_count || 8;
     const avatarUrl = story?.avatar_url || null;
-    const isDrawing = story?.status === "generating_images";
-    const stepsOrder = ["understanding_input", "planning_story", "writing_story", "quality_check", "approved", "generating_scenes", "generating_cover", "generating_pages", "creating_pdf"];
+    const isDrawing = story?.status === "generating_images" || story?.status === "creating_pdf";
+    const stepsOrder = ["understanding_input", "planning_story", "writing_story", "quality_check", "approved", "generating_scenes", "generating_images", "creating_pdf"];
     const currentStepIdx = stepsOrder.indexOf(story?.status ?? "");
 
-    // Pages the server has already written (may have image_url or "")
-    const inProgressPages = isDrawing && story?.pages?.length > 0
-      ? [...story.pages].sort((a, b) => a.page_number - b.page_number)
-      : Array.from({ length: pageCount }, (_, i) => ({ page_number: i, image_url: "" }));
+    // Use real-time livePages from subcollection; fall back to placeholders
+    const inProgressPages = livePages.length > 0
+      ? livePages
+      : Array.from({ length: pageCount }, (_, i) => ({ page_number: i, image_url: null, jpeg_url: null }));
 
-    const doneCount = inProgressPages.filter(p => p.image_url).length;
+    const doneCount = inProgressPages.filter(p => p.jpeg_url || p.image_url).length;
 
     return (
-      <div className="min-h-screen bg-[#FDFBF7] flex flex-col items-center justify-start pt-10 pb-16 px-4" data-testid="story-generating">
+      <div className="min-h-screen bg-[#FDFBF7] flex flex-col items-center justify-start pt-8 pb-6 px-2" data-testid="story-generating">
 
         {/* Avatar hero */}
-        <div className="relative mb-8">
+        <div className="relative mb-6">
           {avatarUrl ? (
-            <div className="relative w-36 h-36 sm:w-44 sm:h-44">
+            <div className="relative w-56 h-56 sm:w-72 sm:h-72">
               <div className="absolute inset-0 rounded-full" style={{ background: "conic-gradient(#FF9F1C, #FFD166, #2A9D8F, #FF9F1C)", animation: "spin 6s linear infinite" }} />
-              <div className="absolute inset-[3px] rounded-full bg-[#FDFBF7]" />
+              <div className="absolute inset-[4px] rounded-full bg-[#FDFBF7]" />
               <img
                 src={avatarUrl}
                 alt="Child avatar"
-                className="absolute inset-[5px] rounded-full object-cover w-[calc(100%-10px)] h-[calc(100%-10px)]"
+                className="absolute inset-[6px] rounded-full object-cover w-[calc(100%-12px)] h-[calc(100%-12px)]"
               />
-              {["-top-2 -right-2", "-bottom-1 -left-2", "top-1/2 -right-4"].map((pos, i) => (
+              {["-top-3 -right-3", "-bottom-2 -left-3", "top-1/2 -right-5"].map((pos, i) => (
                 <div key={i} className={`absolute ${pos}`} style={{ animation: `sparkle 2s ease-in-out ${i * 0.6}s infinite` }}>
-                  <Star className="w-4 h-4 text-[#FF9F1C]" fill="currentColor" />
+                  <Star className="w-6 h-6 text-[#FF9F1C]" fill="currentColor" />
                 </div>
               ))}
             </div>
           ) : (
-            <div className="w-36 h-36 rounded-full bg-[#FF9F1C]/10 flex items-center justify-center">
-              <Sparkles className="w-16 h-16 text-[#FF9F1C] animate-float" strokeWidth={2} />
+            <div className="w-56 h-56 rounded-full bg-[#FF9F1C]/10 flex items-center justify-center">
+              <Sparkles className="w-24 h-24 text-[#FF9F1C] animate-float" strokeWidth={2} />
             </div>
           )}
         </div>
@@ -188,22 +222,25 @@ export default function StoryViewer() {
         </div>
 
         {/* Page grid — real images or shimmers */}
-        <div className="w-full max-w-lg">
-          {isDrawing && (
+        <div className="w-full">
+          {(isDrawing || doneCount > 0) && (
             <p className="text-xs text-[#1E1B4B]/50 text-center mb-3 uppercase tracking-wider">
               {doneCount}/{pageCount} pages drawn — tap to zoom
             </p>
           )}
-          <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
+          <div className="flex justify-center overflow-x-auto pb-2">
+            <div className="flex flex-row gap-3 snap-x snap-mandatory">
             {inProgressPages.map((page, i) => {
               const thumb = page.jpeg_url || page.image_url;
               const imgSrc = thumb || null;
               const label = i === 0 ? "Cover" : i === pageCount - 1 ? "Back" : `Pg ${i}`;
               return (
                 <div
-                  key={i}
+                  key={imgSrc ? `done-${page.page_number}` : `pending-${page.page_number}`}
                   data-testid={`generating-thumb-${i}`}
-                  className={`aspect-[3/4] rounded-xl overflow-hidden relative transition-all duration-500 ${imgSrc ? "cursor-pointer group" : ""}`}
+                  className={`flex-shrink-0 snap-start w-32 h-44 sm:w-40 sm:h-56 rounded-xl overflow-hidden relative transition-all duration-500 ${
+                    imgSrc ? "cursor-pointer group animate-pop-in" : ""
+                  }`}
                   style={{
                     boxShadow: imgSrc ? "0 4px 16px rgba(0,0,0,0.12)" : "none",
                     transform: imgSrc ? "scale(1)" : "scale(0.95)",
@@ -232,6 +269,7 @@ export default function StoryViewer() {
                 </div>
               );
             })}
+            </div>
           </div>
         </div>
 
@@ -259,12 +297,12 @@ export default function StoryViewer() {
 
                   {/* Image */}
                   {zpSrc ? (
-                    <BlurImage
+                    <img
                       src={zpSrc}
                       alt={zpLabel}
                       data-testid={`zoom-image-${zoomedPage}`}
-                      className="w-full rounded-3xl"
-                      style={{ maxHeight: "80vh", objectFit: "contain" }}
+                      className="w-full rounded-3xl block"
+                      style={{ maxHeight: "85vh", objectFit: "contain" }}
                     />
                   ) : (
                     <div className="w-full aspect-[3/4] bg-[#F3E8FF] rounded-3xl flex items-center justify-center">

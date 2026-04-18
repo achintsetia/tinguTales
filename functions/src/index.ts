@@ -15,4 +15,7 @@ export {transliterateChildName} from "./transliterateChildName.js";
 export {generateStoryDraft} from "./generateStoryDraft.js";
 export {approveStoryDraft} from "./approveStoryDraft.js";
 export {generateScenes, retrySceneGeneration} from "./generateScenes.js";
+export {enqueuePageImageTask, processPageImage} from "./pageImageQueue.js";
+export {generateStorybookPdf} from "./pdfGeneration.js";
 export {getAdminCostReport} from "./getAdminCostReport.js";
+export {adminRetryPageImage, adminRetryPdf} from "./adminRetryTasks.js";

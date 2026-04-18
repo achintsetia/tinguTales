@@ -389,6 +389,71 @@ export default function Dashboard() {
             </div>
           ) : (
             <>
+              {/* ── Published / in-progress stories ── */}
+              {visibleStories.length > 0 && (
+                <div className="mb-10">
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                    {visibleStories.map((story) => {
+                      const statusInfo = getStatusInfo(story.status);
+                      const StatusIcon = statusInfo.icon;
+                      const isActive = story.status !== "completed" && story.status !== "failed";
+                      return (
+                        <Card
+                          key={story.story_id}
+                          data-testid={`story-card-${story.story_id}`}
+                          className="rounded-2xl border-2 border-[#F3E8FF] overflow-hidden card-hover cursor-pointer group"
+                          onClick={() => navigate(`/story/${story.story_id}`)}
+                        >
+                          <div className="aspect-[3/4] bg-gradient-to-br from-[#3730A3]/10 to-[#FF9F1C]/10 relative overflow-hidden">
+                            {story.cover_image_url ? (
+                              <img
+                                src={story.cover_image_url}
+                                alt={story.title}
+                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                              />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center">
+                                {isActive ? (
+                                  <div className="text-center">
+                                    <Sparkles className="w-8 h-8 text-[#FF9F1C] mx-auto mb-1 animate-float" strokeWidth={2} />
+                                    <p className="text-xs text-[#1E1B4B]/50">Creating...</p>
+                                  </div>
+                                ) : (
+                                  <BookOpen className="w-10 h-10 text-[#F3E8FF]" strokeWidth={1.5} />
+                                )}
+                              </div>
+                            )}
+                            <div className="absolute top-2 right-2">
+                              <Badge variant="default" className={`${statusInfo.color} rounded-full px-2 py-0.5 text-[10px] font-semibold border-0`}>
+                                <StatusIcon className="w-2.5 h-2.5 mr-1" strokeWidth={2.5} />
+                                {statusInfo.label}
+                              </Badge>
+                            </div>
+                          </div>
+                          <CardContent className="p-3">
+                            <h3 className="font-native text-sm font-medium text-[#1E1B4B] truncate" style={{ fontFamily: "Fredoka" }}>
+                              {story.title || "Untitled Story"}
+                            </h3>
+                            <div className="flex items-center justify-between mt-1.5">
+                              <span className="text-xs text-[#1E1B4B]/40 truncate">{story.child_name}</span>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                data-testid={`btn-delete-story-${story.story_id}`}
+                                onClick={(e) => { e.stopPropagation(); handleDelete(story.story_id); }}
+                                className="rounded-full text-[#1E1B4B]/30 hover:text-[#E76F51] hover:bg-[#E76F51]/10 h-7 w-7 p-0 flex-shrink-0"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" strokeWidth={2} />
+                              </Button>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
               {/* ── Draft stories ── */}
               {draftStories.length > 0 && (
                 <div className="mb-8">
@@ -466,75 +531,6 @@ export default function Dashboard() {
                 </div>
               )}
 
-              {/* ── Published / in-progress stories ── */}
-              {visibleStories.length > 0 && (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {visibleStories.map((story) => {
-                    const statusInfo = getStatusInfo(story.status);
-                    const StatusIcon = statusInfo.icon;
-                    const isActive = story.status !== "completed" && story.status !== "failed";
-                    return (
-                      <Card
-                        key={story.story_id}
-                        data-testid={`story-card-${story.story_id}`}
-                        className="rounded-3xl border-2 border-[#F3E8FF] overflow-hidden card-hover cursor-pointer group"
-                        onClick={() => navigate(`/story/${story.story_id}`)}
-                      >
-                        <div className="aspect-[3/4] bg-gradient-to-br from-[#3730A3]/10 to-[#FF9F1C]/10 relative overflow-hidden">
-                          {story.cover_image_url ? (
-                            <img
-                              src={story.cover_image_url}
-                              alt={story.title}
-                              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                            />
-                          ) : (
-                            <div className="w-full h-full flex items-center justify-center">
-                              {isActive ? (
-                                <div className="text-center">
-                                  <Sparkles className="w-10 h-10 text-[#FF9F1C] mx-auto mb-2 animate-float" strokeWidth={2} />
-                                  <p className="text-sm text-[#1E1B4B]/50">Creating magic...</p>
-                                </div>
-                              ) : (
-                                <BookOpen className="w-16 h-16 text-[#F3E8FF]" strokeWidth={1.5} />
-                              )}
-                            </div>
-                          )}
-                          <div className="absolute top-3 right-3">
-                            <Badge variant="default" className={`${statusInfo.color} rounded-full px-3 py-1 text-xs font-semibold border-0`}>
-                              <StatusIcon className="w-3 h-3 mr-1" strokeWidth={2.5} />
-                              {statusInfo.label}
-                            </Badge>
-                          </div>
-                        </div>
-                        <CardContent className="p-6">
-                          <h3 className="font-native text-lg font-medium text-[#1E1B4B] mb-1 truncate" style={{ fontFamily: "Fredoka" }}>
-                            {story.title || "Untitled Story"}
-                          </h3>
-                          <div className="flex items-center gap-2 text-sm text-[#1E1B4B]/50">
-                            <span>{story.child_name}</span>
-                            <span>&#183;</span>
-                            <span>{story.language}</span>
-                          </div>
-                          <div className="flex items-center justify-between mt-4">
-                            <span className="text-xs text-[#1E1B4B]/40">
-                              {new Date(story.created_at).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
-                            </span>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              data-testid={`btn-delete-story-${story.story_id}`}
-                              onClick={(e) => { e.stopPropagation(); handleDelete(story.story_id); }}
-                              className="rounded-full text-[#1E1B4B]/30 hover:text-[#E76F51] hover:bg-[#E76F51]/10 h-8 w-8 p-0"
-                            >
-                              <Trash2 className="w-4 h-4" strokeWidth={2} />
-                            </Button>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    );
-                  })}
-                </div>
-              )}
             </>
           )
         )}
