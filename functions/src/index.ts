@@ -5,6 +5,7 @@ import {setGlobalOptions} from "firebase-functions/v2";
 setGlobalOptions({region: "asia-south1", maxInstances: 10});
 
 export {createChildProfile} from "./createChildProfile.js";
+export {deleteChildProfile} from "./deleteChildProfile.js";
 export {generateAvatarOnProfileCreate} from "./generateAvatarOnProfileCreate.js";
 export {retryAvatarGeneration} from "./retryAvatarGeneration.js";
 export {listGeminiModels} from "./listGeminiModels.js";

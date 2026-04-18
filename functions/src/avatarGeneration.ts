@@ -66,7 +66,10 @@ export async function generateAvatar(
   const mimeType = ext === "png" ? "image/png" : "image/jpeg";
   logger.info(`[generateAvatar] photo downloaded — size=${photoBytes.length}B mimeType=${mimeType}`);
 
-  const ai = new GoogleGenAI({apiKey});
+  const ai = new GoogleGenAI({
+    apiKey,
+    httpOptions: {timeout: 180000}, // 3 minutes — image generation can be slow
+  });
 
   // Load model name from Firestore models collection
   const modelDoc = await db.collection("models").doc("avatar_generation_model").get();
@@ -92,25 +95,53 @@ export async function generateAvatar(
     `IMPORTANT: The output image must contain ONLY the cartoon avatar of the child and the child's name "${name}" written below the avatar. ` +
     "Do NOT include any other text, labels, captions, watermarks, or decorative words anywhere in the image.";
 
-  logger.info(`[generateAvatar] calling Gemini generateContent (model=${modelName})`);
-  const response = await ai.models.generateContent({
-    model: modelName,
-    contents: [
-      {
-        role: "user",
-        parts: [
-          {inlineData: {mimeType, data: photoB64}},
-          {text: prompt},
+  const isRetryableError = (err: unknown): boolean => {
+    if (err instanceof Error) {
+      const code = (err as NodeJS.ErrnoException & {code?: string}).code ?? "";
+      if (["UND_ERR_HEADERS_TIMEOUT", "UND_ERR_CONNECT_TIMEOUT", "ECONNRESET", "ETIMEDOUT"].includes(code)) {
+        return true;
+      }
+      // Retry on HTTP 5xx responses surfaced as errors
+      if (/\b(500|502|503|504)\b/.test(err.message)) return true;
+    }
+    return false;
+  };
+
+  const MAX_ATTEMPTS = 3;
+  let response: Awaited<ReturnType<typeof ai.models.generateContent>> | null = null;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      logger.info(`[generateAvatar] calling Gemini generateContent (model=${modelName}) attempt=${attempt}`);
+      response = await ai.models.generateContent({
+        model: modelName,
+        contents: [
+          {
+            role: "user",
+            parts: [
+              {inlineData: {mimeType, data: photoB64}},
+              {text: prompt},
+            ],
+          },
         ],
-      },
-    ],
-    config: {
-      responseModalities: ["IMAGE", "TEXT"],
-      systemInstruction:
-        "You are a children's book character designer. Create adorable cartoon avatars " +
-        "from photos, faithfully preserving the child's face, hairstyle, clothing, and body proportions.",
-    },
-  });
+        config: {
+          responseModalities: ["IMAGE", "TEXT"],
+          systemInstruction:
+            "You are a children's book character designer. Create adorable cartoon avatars " +
+            "from photos, faithfully preserving the child's face, hairstyle, clothing, and body proportions.",
+        },
+      });
+      break; // success
+    } catch (err) {
+      if (attempt < MAX_ATTEMPTS && isRetryableError(err)) {
+        const delayMs = 5000 * attempt; // 5 s, 10 s
+        logger.warn(`[generateAvatar] transient error on attempt ${attempt}, retrying in ${delayMs}ms`, err);
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+      } else {
+        throw err;
+      }
+    }
+  }
+  if (!response) throw new Error("generateContent returned no response after retries");
   logger.info(`[generateAvatar] Gemini response received — candidates=${response.candidates?.length ?? 0}`);
 
   // Record Gemini token consumption (fire-and-forget)
