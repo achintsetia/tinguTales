@@ -32,6 +32,14 @@ function AppRouter() {
         }
       />
       <Route
+        path="/create/:storyId"
+        element={
+          <ProtectedRoute>
+            <CreateStory />
+          </ProtectedRoute>
+        }
+      />
+      <Route
         path="/story/:storyId"
         element={
           <ProtectedRoute>

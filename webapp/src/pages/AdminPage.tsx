@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { useAuth, API } from "../context/AuthContext";
-import axios from "axios";
+import { useAuth } from "../context/AuthContext";
+import { db } from "../firebase";
+import { collection, getDocs, doc, getDoc, setDoc, query, orderBy } from "firebase/firestore";
 import { toast } from "sonner";
 import { Button } from "../components/ui/button";
 import { Card, CardContent } from "../components/ui/card";
@@ -34,16 +35,30 @@ export default function AdminPage() {
   const fetchAll = async () => {
     setLoading(true);
     try {
-      const [statsRes, jobsRes, paymentsRes, settingsRes] = await Promise.all([
-        axios.get(`${API}/admin/stats`),
-        axios.get(`${API}/admin/jobs`),
-        axios.get(`${API}/admin/payments`),
-        axios.get(`${API}/settings/public`),
+      const [storiesSnap, usersSnap, paymentsSnap, settingsSnap] = await Promise.all([
+        getDocs(collection(db, "stories")),
+        getDocs(collection(db, "user_profile")),
+        getDocs(query(collection(db, "payments"), orderBy("created_at", "desc"))),
+        getDoc(doc(db, "settings", "public")),
       ]);
-      setStats(statsRes.data);
-      setJobs(jobsRes.data);
-      setPayments(paymentsRes.data);
-      setPaymentsEnabled(settingsRes.data.payments_enabled);
+      const allStories = storiesSnap.docs.map((d) => d.data());
+      const allPayments = paymentsSnap.docs.map((d) => d.data());
+      const totalRevenue = allPayments
+        .filter((p) => p.status === "paid")
+        .reduce((sum, p) => sum + (p.amount || 0), 0);
+      setStats({
+        total_users: usersSnap.size,
+        total_stories: allStories.length,
+        completed_stories: allStories.filter((s) => s.status === "completed").length,
+        total_revenue: totalRevenue,
+        pending_jobs: 0,
+        processing_jobs: 0,
+      });
+      setJobs([]);
+      setPayments(allPayments);
+      if (settingsSnap.exists()) {
+        setPaymentsEnabled(settingsSnap.data().payments_enabled ?? false);
+      }
     } catch (e) {
       toast.error("Failed to load admin data");
     } finally {
@@ -54,7 +69,7 @@ export default function AdminPage() {
   const handleTogglePayments = async (checked) => {
     setTogglingPayments(true);
     try {
-      await axios.put(`${API}/admin/settings`, { payments_enabled: checked });
+      await setDoc(doc(db, "settings", "public"), { payments_enabled: checked }, { merge: true });
       setPaymentsEnabled(checked);
       toast.success(checked ? "Payments enabled" : "Payments disabled — users can create stories for free");
     } catch (e) {
@@ -65,24 +80,11 @@ export default function AdminPage() {
   };
 
   const handleClearStale = async () => {
-    try {
-      const res = await axios.delete(`${API}/admin/jobs/stale`);
-      toast.success(`Cleared ${res.data.deleted_jobs} jobs, failed ${res.data.stuck_stories_failed} stuck stories`);
-      fetchAll();
-    } catch (e) {
-      toast.error("Failed to clear stale jobs");
-    }
+    toast.info("Job queue management is not available in this version.");
   };
 
-  const handleRefund = async (paymentId) => {
-    if (!window.confirm(`Refund payment ${paymentId}?`)) return;
-    try {
-      await axios.post(`${API}/admin/refund`, { payment_id: paymentId });
-      toast.success("Refund initiated");
-      fetchAll();
-    } catch (e) {
-      toast.error(e.response?.data?.detail || "Refund failed");
-    }
+  const handleRefund = async (_paymentId) => {
+    toast.info("Refund processing is not available in this version.");
   };
 
   const TABS = [

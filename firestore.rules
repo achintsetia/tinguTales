@@ -27,10 +27,15 @@ service cloud.firestore {
       allow write: if false;
     }
 
-    // Stories — users can read/delete their own; writes via Cloud Functions only
+    // Stories — users can read/delete their own; partial client updates allowed for wizard fields
     match /stories/{storyId} {
       allow read, delete: if request.auth != null && resource.data.user_id == request.auth.uid;
-      allow write: if false;
+      // Allow the owner to update only safe wizard metadata fields (no status or draft_pages tampering)
+      allow update: if request.auth != null
+        && resource.data.user_id == request.auth.uid
+        && !request.resource.data.diff(resource.data).affectedKeys()
+            .hasAny(['status', 'draft_pages', 'user_id', 'profile_id', 'created_at']);
+      allow create, write: if false;
     }
 
     // All other collections are locked down by default

@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { useAuth, API } from "../context/AuthContext";
-import axios from "axios";
+import { useAuth } from "../context/AuthContext";
+import { db } from "../firebase";
+import { collection, query, where, getDocs } from "firebase/firestore";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
 import { ArrowLeft, Receipt, CheckCircle, Clock, AlertCircle, Undo2 } from "lucide-react";
@@ -20,10 +21,19 @@ export default function PaymentHistory() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (!user?.id) return;
     const fetch = async () => {
       try {
-        const res = await axios.get(`${API}/payments/history`);
-        setPayments(res.data);
+        const q = query(collection(db, "payments"), where("user_id", "==", user.id));
+        const snap = await getDocs(q);
+        const list = snap.docs
+          .map((d) => d.data())
+          .sort((a, b) => {
+            const ta = a.created_at?.toMillis?.() ?? new Date(a.created_at ?? 0).getTime();
+            const tb = b.created_at?.toMillis?.() ?? new Date(b.created_at ?? 0).getTime();
+            return tb - ta;
+          });
+        setPayments(list);
       } catch (e) {
         console.error("Failed to fetch payments:", e);
       } finally {
@@ -31,7 +41,7 @@ export default function PaymentHistory() {
       }
     };
     fetch();
-  }, []);
+  }, [user?.id]);
 
   return (
     <div className="min-h-screen bg-[#FDFBF7]">

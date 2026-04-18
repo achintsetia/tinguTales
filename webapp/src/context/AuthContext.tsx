@@ -1,5 +1,4 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from "react";
-import axios from "axios";
 import {
   onAuthStateChanged,
   signInWithPopup,
@@ -14,20 +13,7 @@ import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
 import { auth, db } from "@/firebase";
 import type { User } from "@/types";
 
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL as string;
-const API = `${BACKEND_URL}/api`;
-
 const googleProvider = new GoogleAuthProvider();
-
-// Attach a fresh Firebase ID token to every axios request
-axios.interceptors.request.use(async (config) => {
-  const currentUser = auth.currentUser;
-  if (currentUser) {
-    const token = await currentUser.getIdToken();
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-  return config;
-});
 
 async function loadOrCreateProfile(
   firebaseUser: FirebaseUser,
@@ -156,4 +142,4 @@ export function useAuth(): AuthContextValue {
   return context;
 }
 
-export { AuthContext, API, BACKEND_URL };
+export { AuthContext };

@@ -1,7 +1,8 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { useAuth, API } from "../context/AuthContext";
-import axios from "axios";
+import { useAuth } from "../context/AuthContext";
+import { db } from "../firebase";
+import { doc as firestoreDoc, onSnapshot } from "firebase/firestore";
 import { toast } from "sonner";
 import { Button } from "../components/ui/button";
 import {
@@ -39,43 +40,27 @@ export default function StoryViewer() {
   const [story, setStory] = useState(null);
   const [loading, setLoading] = useState(true);
   const [magicIdx, setMagicIdx] = useState(0);
-  const [downloading, setDownloading] = useState(false);
   const [currentPage, setCurrentPage] = useState(0);
   const [leavingPage, setLeavingPage] = useState(null); // index of page animating out
   const [flipDir, setFlipDir] = useState("forward");
   const [preloading, setPreloading] = useState(true);  // waiting for images to cache
   const [zoomedPage, setZoomedPage] = useState(null);  // index of page shown in lightbox
   const [showReveal, setShowReveal] = useState(true);  // show back cover reveal before flipbook
-  const consecutiveErrors = useRef(0);
-  const pollIntervalRef = useRef(null);
-
-  const fetchStory = useCallback(async () => {
-    try {
-      const res = await axios.get(`${API}/stories/${storyId}`);
-      consecutiveErrors.current = 0;
-      setStory(res.data);
-      setLoading(false);
-    } catch (e) {
-      consecutiveErrors.current += 1;
-      console.error("Fetch story error:", e);
-      // Only clear loading after first successful fetch or too many errors
-      if (consecutiveErrors.current >= 5) setLoading(false);
-    }
+  useEffect(() => {
+    if (!storyId) return;
+    const unsub = onSnapshot(
+      firestoreDoc(db, "stories", storyId),
+      (snap) => {
+        if (snap.exists()) setStory({ story_id: snap.id, ...snap.data() });
+        setLoading(false);
+      },
+      (e) => {
+        console.error("Story listener error:", e);
+        setLoading(false);
+      }
+    );
+    return () => unsub();
   }, [storyId]);
-
-  useEffect(() => {
-    fetchStory();
-  }, [fetchStory]);
-
-  // Poll with exponential backoff on errors — faster during image generation
-  useEffect(() => {
-    if (!story || story.status === "completed" || story.status === "failed") return;
-    if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
-    const baseMs = story.status === "generating_images" ? 3000 : 6000;
-    const backoffMs = Math.min(baseMs * Math.pow(1.5, consecutiveErrors.current), 30000);
-    pollIntervalRef.current = setInterval(fetchStory, backoffMs);
-    return () => clearInterval(pollIntervalRef.current);
-  }, [story, fetchStory]);
 
   // Cycle magic messages
   useEffect(() => {
@@ -99,23 +84,7 @@ export default function StoryViewer() {
   }, [story?.status, currentPage, leavingPage]);
 
   const handleDownloadPDF = async () => {
-    setDownloading(true);
-    try {
-      const response = await axios.get(`${API}/stories/${storyId}/pdf`, {
-        responseType: "blob",
-      });
-      const url = URL.createObjectURL(response.data);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `tingu_tales_${storyId}.pdf`;
-      a.click();
-      URL.revokeObjectURL(url);
-      toast.success("PDF downloaded!");
-    } catch (e) {
-      toast.error("Failed to download PDF");
-    } finally {
-      setDownloading(false);
-    }
+    toast.info("PDF download coming soon!");
   };
 
   const goToPage = (next) => {
@@ -133,7 +102,7 @@ export default function StoryViewer() {
   // Prefer the compressed JPEG for browser display; fall back to PNG
   const pageImageUrl = (p) => {
     const url = p?.jpeg_url || p?.image_url;
-    return url ? `${API}/files/${url}` : null;
+    return url || null;
   };
 
   // Preload effect: reset preloading state each time story completes
@@ -147,7 +116,7 @@ export default function StoryViewer() {
   // Generating / in-progress state
   if (loading || (story && story.status !== "completed" && story.status !== "failed")) {
     const pageCount = story?.page_count || 8;
-    const avatarUrl = story?.avatar_url ? `${API}/files/${story.avatar_url}` : null;
+    const avatarUrl = story?.avatar_url || null;
     const isDrawing = story?.status === "generating_images";
     const stepsOrder = ["understanding_input", "planning_story", "writing_story", "quality_check", "creating_scenes", "generating_images", "creating_pdf"];
     const currentStepIdx = stepsOrder.indexOf(story?.status ?? "");
@@ -221,7 +190,7 @@ export default function StoryViewer() {
           <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
             {inProgressPages.map((page, i) => {
               const thumb = page.jpeg_url || page.image_url;
-              const imgSrc = thumb ? `${API}/files/${thumb}` : null;
+              const imgSrc = thumb || null;
               const label = i === 0 ? "Cover" : i === pageCount - 1 ? "Back" : `Pg ${i}`;
               return (
                 <div
@@ -265,7 +234,7 @@ export default function StoryViewer() {
             {zoomedPage !== null && (() => {
               const zp = inProgressPages[zoomedPage];
               const zpImg = zp?.jpeg_url || zp?.image_url;
-              const zpSrc = zpImg ? `${API}/files/${zpImg}` : null;
+              const zpSrc = zpImg || null;
               const zpText = zp?.text || "";
               const zpLabel = zoomedPage === 0 ? "Cover" : zoomedPage === pageCount - 1 ? "Back Cover" : `Page ${zoomedPage}`;
               const hasNext = zoomedPage < inProgressPages.length - 1 && (inProgressPages[zoomedPage + 1]?.jpeg_url || inProgressPages[zoomedPage + 1]?.image_url);
@@ -532,12 +501,11 @@ export default function StoryViewer() {
           <Button
             data-testid="btn-download-pdf"
             onClick={handleDownloadPDF}
-            disabled={downloading}
             size="sm"
             className="rounded-full bg-white/15 hover:bg-white/25 text-white border border-white/20 shrink-0"
           >
             <Download className="w-4 h-4 mr-1.5" strokeWidth={2.5} />
-            {downloading ? "..." : "PDF"}
+            PDF
           </Button>
         </div>
       </nav>

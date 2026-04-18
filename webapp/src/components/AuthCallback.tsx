@@ -1,47 +1,19 @@
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import axios from "axios";
-import { useAuth, API } from "../context/AuthContext";
+import { useAuth } from "../context/AuthContext";
 
 export default function AuthCallback() {
   const navigate = useNavigate();
-  const { setUser } = useAuth();
-  const hasProcessed = useRef(false);
+  const { user, loading } = useAuth();
 
   useEffect(() => {
-    if (hasProcessed.current) return;
-    hasProcessed.current = true;
-
-    const processAuth = async () => {
-      const hash = window.location.hash;
-      const sessionId = new URLSearchParams(hash.substring(1)).get("session_id");
-
-      if (!sessionId) {
-        navigate("/", { replace: true });
-        return;
-      }
-
-      try {
-        const response = await axios.post(`${API}/auth/session`, {
-          session_id: sessionId,
-        });
-        const userData = response.data;
-
-        // Store session token in localStorage for auth
-        if (userData.session_token) {
-          localStorage.setItem("session_token", userData.session_token);
-        }
-
-        setUser(userData);
-        navigate("/dashboard", { replace: true, state: { user: userData } });
-      } catch (error) {
-        console.error("Auth callback error:", error);
-        navigate("/", { replace: true });
-      }
-    };
-
-    processAuth();
-  }, [navigate, setUser]);
+    if (loading) return;
+    if (user) {
+      navigate("/dashboard", { replace: true });
+    } else {
+      navigate("/", { replace: true });
+    }
+  }, [user, loading, navigate]);
 
   return (
     <div className="min-h-screen bg-paper flex items-center justify-center">

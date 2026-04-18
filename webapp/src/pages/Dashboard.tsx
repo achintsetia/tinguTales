@@ -1,11 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { useAuth, API } from "../context/AuthContext";
-import axios from "axios";
+import { useAuth } from "../context/AuthContext";
 import { db } from "../firebase";
 import { functions } from "../firebase";
 import { httpsCallable } from "firebase/functions";
-import { collection, query, where, onSnapshot } from "firebase/firestore";
+import { collection, query, where, onSnapshot, getDoc, getDocs, deleteDoc, doc as firestoreDoc } from "firebase/firestore";
 import { toast } from "sonner";
 import { Button } from "../components/ui/button";
 import { Card, CardContent } from "../components/ui/card";
@@ -18,7 +17,8 @@ import {
 import {
   BookOpen, Plus, LogOut, Sparkles, Clock, CheckCircle,
   AlertCircle, Trash2, User, ChevronDown,
-  Shield, Receipt, Upload, CreditCard, ShieldCheck
+  Shield, Receipt, Upload, CreditCard, ShieldCheck,
+  FileText, Play, RefreshCw
 } from "lucide-react";
 
 const STATUS_MAP = {
@@ -50,27 +50,25 @@ export default function Dashboard() {
   const [loadingUploads, setLoadingUploads] = useState(false);
   const [deletingUpload, setDeletingUpload] = useState<string | null>(null);
   const [pendingDeleteUpload, setPendingDeleteUpload] = useState<{path: string; filename: string} | null>(null);
-  const [exporting, setExporting] = useState(false);
-  const [importing, setImporting] = useState(false);
+  const [exporting] = useState(false);
   const importRef = useRef<HTMLInputElement | null>(null);
 
-  const fetchStories = async () => {
-    try {
-      const res = await axios.get(`${API}/stories`);
-      setStories(res.data);
-    } catch (e) {
-      console.error("Failed to fetch stories:", e);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const fetchStories = () => {}; // replaced by Firestore onSnapshot below
 
   const fetchPayments = async () => {
     if (payments.length > 0) return;
     setLoadingPayments(true);
     try {
-      const res = await axios.get(`${API}/payments/history`);
-      setPayments(res.data);
+      const q = query(collection(db, "payments"), where("user_id", "==", user?.id));
+      const snap = await getDocs(q);
+      const list = snap.docs
+        .map((d) => d.data())
+        .sort((a, b) => {
+          const ta = a.created_at?.toMillis?.() ?? new Date(a.created_at ?? 0).getTime();
+          const tb = b.created_at?.toMillis?.() ?? new Date(b.created_at ?? 0).getTime();
+          return tb - ta;
+        });
+      setPayments(list);
     } catch (e) {
       console.error("Failed to fetch payments:", e);
     } finally {
@@ -126,80 +124,93 @@ export default function Dashboard() {
     setPendingDeleteUpload({ path, filename });
   };
 
+  // Subscribe to stories from Firestore
   useEffect(() => {
-    fetchStories();
-  }, []);
+    if (!user?.id) return;
+    const q = query(collection(db, "stories"), where("user_id", "==", user.id));
+    const unsub = onSnapshot(
+      q,
+      (snap) => {
+        const all = snap.docs
+          .map((d) => ({ ...d.data(), story_id: d.id }))
+          .sort((a: any, b: any) => {
+            const ta = a.created_at?.toMillis?.() ?? new Date(a.created_at ?? 0).getTime();
+            const tb = b.created_at?.toMillis?.() ?? new Date(b.created_at ?? 0).getTime();
+            return tb - ta;
+          });
+        setStories(all);
+        setLoading(false);
+      },
+      () => setLoading(false)
+    );
+    return () => unsub();
+  }, [user?.id]);
 
   const DRAFT_STATUSES = ["drafting", "draft_ready", "draft_failed"];
 
-  useEffect(() => {
-    const hasActive = stories.some(
-      (s) => !DRAFT_STATUSES.includes(s.status) && s.status !== "completed" && s.status !== "failed"
-    );
-    if (!hasActive) return;
-    const interval = setInterval(fetchStories, 5000);
-    return () => clearInterval(interval);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stories]);
-
   const visibleStories = stories.filter((s) => !DRAFT_STATUSES.includes(s.status));
+
+  const draftStories = stories.filter((s) => DRAFT_STATUSES.includes(s.status));
 
   const handleDelete = async (storyId) => {
     try {
-      await axios.delete(`${API}/stories/${storyId}`);
+      await deleteDoc(firestoreDoc(db, "stories", storyId));
       toast.success("Story deleted");
-      setStories((prev) => prev.filter((s) => s.story_id !== storyId));
     } catch {
       toast.error("Failed to delete story");
     }
   };
 
-  const handleExport = async () => {
-    setExporting(true);
-    toast.info("Preparing export... This may take a moment.");
+  const handleDeleteDraft = async (storyId: string) => {
     try {
-      const response = await axios.get(`${API}/export`, { responseType: "blob" });
-      const url = URL.createObjectURL(response.data);
-      const a = document.createElement("a");
-      a.href = url;
-      const name = user?.name?.replace(/\s+/g, "_") || "user";
-      a.download = `tingu_tales_${name}_${new Date().toISOString().slice(0, 10)}.zip`;
-      a.click();
-      URL.revokeObjectURL(url);
-      toast.success("Export downloaded!");
-    } catch (e) {
-      toast.error("Export failed");
-      console.error("Export error:", e);
-    } finally {
-      setExporting(false);
+      await deleteDoc(firestoreDoc(db, "stories", storyId));
+      toast.success("Draft deleted");
+      try {
+        const raw = localStorage.getItem("tingu_wizard_state");
+        if (raw) {
+          const saved = JSON.parse(raw);
+          if (saved.draftStoryId === storyId) localStorage.removeItem("tingu_wizard_state");
+        }
+      } catch { /* ignore */ }
+    } catch {
+      toast.error("Failed to delete draft");
     }
   };
 
-  const handleImport = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (!file.name.endsWith(".zip")) {
-      toast.error("Please select a .zip file");
-      return;
-    }
-    setImporting(true);
-    toast.info("Importing data...");
+  // isRetry=true: delete the failed doc and re-open wizard at step 4 so it regenerates
+  const handleResumeDraft = async (storyId: string, isRetry = false) => {
     try {
-      const formData = new FormData();
-      formData.append("file", file);
-      const res = await axios.post(`${API}/import`, formData, {
-        headers: { "Content-Type": "multipart/form-data" },
-      });
-      const imp = res.data.imported;
-      toast.success(`Imported ${imp.profiles} profiles, ${imp.stories} stories, ${imp.files} files`);
-      fetchStories();
-    } catch (e) {
-      toast.error("Import failed");
-      console.error("Import error:", e);
-    } finally {
-      setImporting(false);
-      if (importRef.current) importRef.current.value = "";
+      const snap = await getDoc(firestoreDoc(db, "stories", storyId));
+      if (!snap.exists()) { toast.error("Draft not found"); return; }
+      const data = snap.data();
+      if (isRetry) {
+        await deleteDoc(firestoreDoc(db, "stories", storyId)).catch(() => {});
+      }
+      const wizardState = {
+        step: isRetry ? 4 : 5,
+        profileId: data.profile_id || null,
+        langCode: data.language_code || "en",
+        interests: data.interests || [],
+        pageCount: data.page_count || 8,
+        customIncident: data.custom_incident || "",
+        nativeChildName: "",
+        draftStoryId: isRetry ? null : storyId,
+        draftTitle: isRetry ? "" : (data.title || ""),
+        savedAt: new Date().toISOString(),
+      };
+      localStorage.setItem("tingu_wizard_state", JSON.stringify(wizardState));
+      navigate("/create");
+    } catch {
+      toast.error("Could not load draft");
     }
+  };
+
+  const handleExport = async () => {
+    toast.info("Export is not available in this version.");
+  };
+
+  const handleImport = async (_e) => {
+    toast.info("Import is not available in this version.");
   };
 
   const handleDeleteProfile = async (e: React.MouseEvent, profileId: string, photoUrl: string) => {
@@ -303,7 +314,7 @@ export default function Dashboard() {
             <p className="text-[#1E1B4B]/60">
               {stories.length === 0
                 ? "Create your first magical storybook!"
-                : `${activeStories.length} storybook${activeStories.length !== 1 ? "s" : ""} created`}
+                : `${activeStories.length} storybook${activeStories.length !== 1 ? "s" : ""} created${draftStories.length > 0 ? ` · ${draftStories.length} draft${draftStories.length !== 1 ? "s" : ""}` : ""}`}
             </p>
           </div>
           <Button
@@ -356,7 +367,7 @@ export default function Dashboard() {
                 </div>
               ))}
             </div>
-          ) : visibleStories.length === 0 ? (
+          ) : (draftStories.length === 0 && visibleStories.length === 0) ? (
             <div className="text-center py-24">
               <div className="w-24 h-24 mx-auto mb-6 rounded-full bg-[#FF9F1C]/10 flex items-center justify-center animate-float">
                 <BookOpen className="w-12 h-12 text-[#FF9F1C]" strokeWidth={2} />
@@ -377,72 +388,154 @@ export default function Dashboard() {
               </Button>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {visibleStories.map((story) => {
-                const statusInfo = getStatusInfo(story.status);
-                const StatusIcon = statusInfo.icon;
-                const isActive = story.status !== "completed" && story.status !== "failed";
-                return (
-                  <Card
-                    key={story.story_id}
-                    data-testid={`story-card-${story.story_id}`}
-                    className="rounded-3xl border-2 border-[#F3E8FF] overflow-hidden card-hover cursor-pointer group"
-                    onClick={() => navigate(`/story/${story.story_id}`)}
-                  >
-                    <div className="aspect-[3/4] bg-gradient-to-br from-[#3730A3]/10 to-[#FF9F1C]/10 relative overflow-hidden">
-                      {story.cover_image_url ? (
-                        <img
-                          src={`${API}/files/${story.cover_image_url}`}
-                          alt={story.title}
-                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                        />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center">
-                          {isActive ? (
-                            <div className="text-center">
-                              <Sparkles className="w-10 h-10 text-[#FF9F1C] mx-auto mb-2 animate-float" strokeWidth={2} />
-                              <p className="text-sm text-[#1E1B4B]/50">Creating magic...</p>
-                            </div>
-                          ) : (
-                            <BookOpen className="w-16 h-16 text-[#F3E8FF]" strokeWidth={1.5} />
-                          )}
-                        </div>
-                      )}
-                      <div className="absolute top-3 right-3">
-                        <Badge className={`${statusInfo.color} rounded-full px-3 py-1 text-xs font-semibold border-0`}>
-                          <StatusIcon className="w-3 h-3 mr-1" strokeWidth={2.5} />
-                          {statusInfo.label}
-                        </Badge>
-                      </div>
-                    </div>
-                    <CardContent className="p-6">
-                      <h3 className="font-native text-lg font-medium text-[#1E1B4B] mb-1 truncate" style={{ fontFamily: "Fredoka" }}>
-                        {story.title || "Untitled Story"}
-                      </h3>
-                      <div className="flex items-center gap-2 text-sm text-[#1E1B4B]/50">
-                        <span>{story.child_name}</span>
-                        <span>&#183;</span>
-                        <span>{story.language}</span>
-                      </div>
-                      <div className="flex items-center justify-between mt-4">
-                        <span className="text-xs text-[#1E1B4B]/40">
-                          {new Date(story.created_at).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
-                        </span>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          data-testid={`btn-delete-story-${story.story_id}`}
-                          onClick={(e) => { e.stopPropagation(); handleDelete(story.story_id); }}
-                          className="rounded-full text-[#1E1B4B]/30 hover:text-[#E76F51] hover:bg-[#E76F51]/10 h-8 w-8 p-0"
+            <>
+              {/* ── Draft stories ── */}
+              {draftStories.length > 0 && (
+                <div className="mb-8">
+                  <h2 className="text-base font-semibold text-[#1E1B4B] mb-3 flex items-center gap-2">
+                    <FileText className="w-4 h-4 text-[#FF9F1C]" strokeWidth={2.5} />
+                    Drafts
+                    <span className="text-xs font-normal text-[#1E1B4B]/40">{draftStories.length}</span>
+                  </h2>
+                  <div className="space-y-3">
+                    {draftStories.map((story) => {
+                      const isGenerating = story.status === "drafting";
+                      const isReady = story.status === "draft_ready";
+                      const isFailed = story.status === "draft_failed";
+                      return (
+                        <div
+                          key={story.story_id}
+                          className="flex items-center gap-4 p-4 rounded-2xl bg-white border-2 border-dashed border-[#FF9F1C]/30"
                         >
-                          <Trash2 className="w-4 h-4" strokeWidth={2} />
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
-                );
-              })}
-            </div>
+                          <div className={`w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 ${
+                            isFailed ? "bg-[#E76F51]/10" : "bg-[#FF9F1C]/10"
+                          }`}>
+                            {isGenerating && <Sparkles className="w-5 h-5 text-[#FF9F1C] animate-float" strokeWidth={2} />}
+                            {isReady && <FileText className="w-5 h-5 text-[#FF9F1C]" strokeWidth={2} />}
+                            {isFailed && <AlertCircle className="w-5 h-5 text-[#E76F51]" strokeWidth={2} />}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="font-semibold text-[#1E1B4B] truncate text-sm" style={{ fontFamily: "Fredoka" }}>
+                              {story.title || "Draft Story"}
+                            </p>
+                            <p className="text-xs text-[#1E1B4B]/50 mt-0.5">
+                              {story.child_name} · {story.language}
+                            </p>
+                            <span className={`mt-1.5 inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                              isReady ? "bg-[#2A9D8F]/15 text-[#2A9D8F]" :
+                              isFailed ? "bg-[#E76F51]/15 text-[#E76F51]" :
+                              "bg-[#FF9F1C]/15 text-[#FF9F1C]"
+                            }`}>
+                              {isGenerating ? "Generating..." : isReady ? "Ready to Review" : "Failed"}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2 flex-shrink-0">
+                            {isReady && (
+                              <Button
+                                size="sm"
+                                onClick={() => handleResumeDraft(story.story_id)}
+                                className="rounded-full bg-[#3730A3] hover:bg-[#2d2888] text-white text-xs font-bold h-8 px-3 gap-1.5"
+                              >
+                                <Play className="w-3 h-3 fill-white" strokeWidth={0} />
+                                Resume
+                              </Button>
+                            )}
+                            {isFailed && (
+                              <Button
+                                size="sm"
+                                onClick={() => handleResumeDraft(story.story_id, true)}
+                                className="rounded-full bg-[#E76F51]/10 hover:bg-[#E76F51]/20 text-[#E76F51] text-xs font-bold h-8 px-3 gap-1.5"
+                              >
+                                <RefreshCw className="w-3 h-3" strokeWidth={2.5} />
+                                Retry
+                              </Button>
+                            )}
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleDeleteDraft(story.story_id)}
+                              className="rounded-full text-[#1E1B4B]/30 hover:text-[#E76F51] hover:bg-[#E76F51]/10 h-8 w-8 p-0"
+                            >
+                              <Trash2 className="w-4 h-4" strokeWidth={2} />
+                            </Button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* ── Published / in-progress stories ── */}
+              {visibleStories.length > 0 && (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {visibleStories.map((story) => {
+                    const statusInfo = getStatusInfo(story.status);
+                    const StatusIcon = statusInfo.icon;
+                    const isActive = story.status !== "completed" && story.status !== "failed";
+                    return (
+                      <Card
+                        key={story.story_id}
+                        data-testid={`story-card-${story.story_id}`}
+                        className="rounded-3xl border-2 border-[#F3E8FF] overflow-hidden card-hover cursor-pointer group"
+                        onClick={() => navigate(`/story/${story.story_id}`)}
+                      >
+                        <div className="aspect-[3/4] bg-gradient-to-br from-[#3730A3]/10 to-[#FF9F1C]/10 relative overflow-hidden">
+                          {story.cover_image_url ? (
+                            <img
+                              src={story.cover_image_url}
+                              alt={story.title}
+                              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                            />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center">
+                              {isActive ? (
+                                <div className="text-center">
+                                  <Sparkles className="w-10 h-10 text-[#FF9F1C] mx-auto mb-2 animate-float" strokeWidth={2} />
+                                  <p className="text-sm text-[#1E1B4B]/50">Creating magic...</p>
+                                </div>
+                              ) : (
+                                <BookOpen className="w-16 h-16 text-[#F3E8FF]" strokeWidth={1.5} />
+                              )}
+                            </div>
+                          )}
+                          <div className="absolute top-3 right-3">
+                            <Badge variant="default" className={`${statusInfo.color} rounded-full px-3 py-1 text-xs font-semibold border-0`}>
+                              <StatusIcon className="w-3 h-3 mr-1" strokeWidth={2.5} />
+                              {statusInfo.label}
+                            </Badge>
+                          </div>
+                        </div>
+                        <CardContent className="p-6">
+                          <h3 className="font-native text-lg font-medium text-[#1E1B4B] mb-1 truncate" style={{ fontFamily: "Fredoka" }}>
+                            {story.title || "Untitled Story"}
+                          </h3>
+                          <div className="flex items-center gap-2 text-sm text-[#1E1B4B]/50">
+                            <span>{story.child_name}</span>
+                            <span>&#183;</span>
+                            <span>{story.language}</span>
+                          </div>
+                          <div className="flex items-center justify-between mt-4">
+                            <span className="text-xs text-[#1E1B4B]/40">
+                              {new Date(story.created_at).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
+                            </span>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              data-testid={`btn-delete-story-${story.story_id}`}
+                              onClick={(e) => { e.stopPropagation(); handleDelete(story.story_id); }}
+                              className="rounded-full text-[#1E1B4B]/30 hover:text-[#E76F51] hover:bg-[#E76F51]/10 h-8 w-8 p-0"
+                            >
+                              <Trash2 className="w-4 h-4" strokeWidth={2} />
+                            </Button>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </div>
+              )}
+            </>
           )
         )}
 
@@ -482,7 +575,7 @@ export default function Dashboard() {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
                         <p className="text-base font-semibold text-[#1E1B4B]" style={{ fontFamily: "Fredoka" }}>₹{p.amount}</p>
-                        <Badge className={`${s.bg} ${s.text} rounded-full px-2 py-0.5 text-[10px] font-bold border-0 uppercase`}>
+                        <Badge variant="default" className={`${s.bg} ${s.text} rounded-full px-2 py-0.5 text-[10px] font-bold border-0 uppercase`}>
                           {p.status}
                         </Badge>
                       </div>

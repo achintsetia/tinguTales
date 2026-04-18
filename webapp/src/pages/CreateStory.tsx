@@ -1,13 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-
-declare global {
-  interface Window {
-    Razorpay: any;
-  }
-}
-import { useNavigate } from "react-router-dom";
-import { useAuth, API } from "../context/AuthContext";
-import axios from "axios";
+import { useNavigate, useParams } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
 import { toast } from "sonner";
 import { Button } from "../components/ui/button";
 import { Card, CardContent } from "../components/ui/card";
@@ -23,7 +16,7 @@ import {
   AlertCircle, RotateCcw, Gift, Trophy, GraduationCap, PartyPopper,
 } from "lucide-react";
 import { db, storage, functions } from "../firebase";
-import { collection, query, where, onSnapshot, deleteDoc, doc as firestoreDoc, updateDoc } from "firebase/firestore";
+import { collection, query, where, onSnapshot, deleteDoc, doc as firestoreDoc, updateDoc, getDoc, setDoc } from "firebase/firestore";
 import { ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
 import { httpsCallable } from "firebase/functions";
 
@@ -237,6 +230,7 @@ const PRICING_TABLE = { 6: 79, 8: 99, 10: 129, 12: 149 };
 export default function CreateStory() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const { storyId: urlStoryId } = useParams<{ storyId: string }>();
   const [step, setStep] = useState(1);
   const [profiles, setProfiles] = useState([]);
   const [selectedProfile, setSelectedProfile] = useState(null);
@@ -253,6 +247,8 @@ export default function CreateStory() {
   const [draftError, setDraftError] = useState("");
   const [draftTitle, setDraftTitle] = useState("");
   const [editedPages, setEditedPages] = useState([]);
+  const [loadingStep, setLoadingStep] = useState(0);
+  const loadingTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   const [approving, setApproving] = useState(false);
   const [nativeChildName, setNativeChildName] = useState("");
   const [transliterating, setTransliterating] = useState(false);
@@ -263,7 +259,7 @@ export default function CreateStory() {
   const [loadingProfiles, setLoadingProfiles] = useState(true);
   const [savingProfile, setSavingProfile] = useState(false);
   const [photoPreview, setPhotoPreview] = useState(null);
-  const [paymentsEnabled, setPaymentsEnabled] = useState(true);
+  const [paymentsEnabled] = useState(false);
   const [deleteUploadPrompt, setDeleteUploadPrompt] = useState<{
     profileId: string; photoPath: string; profileName: string;
   } | null>(null);
@@ -311,17 +307,7 @@ export default function CreateStory() {
   }, [user?.id]);
 
   useEffect(() => {
-    // Check if payments are enabled
-    axios.get(`${API}/settings/public`).then(res => {
-      setPaymentsEnabled(res.data.payments_enabled);
-    }).catch(() => {});
-    // Load Razorpay checkout script
-    if (!document.querySelector('script[src="https://checkout.razorpay.com/v1/checkout.js"]')) {
-      const script = document.createElement("script");
-      script.src = "https://checkout.razorpay.com/v1/checkout.js";
-      script.async = true;
-      document.body.appendChild(script);
-    }
+    // Razorpay script is not needed — payments are currently disabled
   }, []);
 
   // Auto-transliterate child's name when language changes
@@ -357,7 +343,35 @@ export default function CreateStory() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedLang, selectedProfile?.name]);
 
-  // ── Persist wizard state to localStorage ─────────────────────────────
+  // ── Restore from URL storyId (/create/:storyId) ────────────────────────
+  // Runs once when profiles are loaded and a URL storyId is present
+  const urlRestoredRef = useRef(false);
+  useEffect(() => {
+    if (!urlStoryId || urlRestoredRef.current || profiles.length === 0) return;
+    urlRestoredRef.current = true;
+    getDoc(firestoreDoc(db, "stories", urlStoryId)).then((snap) => {
+      if (!snap.exists()) return;
+      const data = snap.data();
+      // Restore profile
+      const p = profiles.find((pr) => pr.profile_id === data.profile_id);
+      if (p) setSelectedProfile(p);
+      // Restore language
+      const lang = LANGUAGES.find((l) => l.code === data.language_code);
+      if (lang) setSelectedLang(lang);
+      // Restore interests, page count, incident, template
+      if (data.interests?.length) setSelectedInterests(data.interests);
+      if (data.page_count) setPageCount(data.page_count);
+      if (data.custom_incident) setCustomIncident(data.custom_incident);
+      if (data.selected_template) setSelectedTemplate(data.selected_template);
+      if (data.native_child_name) { setNativeChildName(data.native_child_name); setTransliterationDone(true); }
+      // Set draft state
+      setDraftStoryId(urlStoryId);
+      if (data.title) setDraftTitle(data.title);
+      // Jump to step 5 — the existing resume logic in the step useEffect will load pages
+      setStep(5);
+    }).catch((e) => console.error("Could not restore story from URL:", e));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [urlStoryId, profiles]);
   const WIZARD_KEY = "tingu_wizard_state";
 
   const saveWizardState = useCallback(() => {
@@ -370,15 +384,17 @@ export default function CreateStory() {
       pageCount,
       customIncident,
       nativeChildName,
+      draftStoryId: draftStoryId || null,
+      draftTitle: draftTitle || null,
       savedAt: new Date().toISOString(),
     };
     localStorage.setItem(WIZARD_KEY, JSON.stringify(state));
-  }, [step, selectedProfile, selectedLang, selectedInterests, selectedTemplate, pageCount, customIncident, nativeChildName]);
+  }, [step, selectedProfile, selectedLang, selectedInterests, selectedTemplate, pageCount, customIncident, nativeChildName, draftStoryId, draftTitle]);
 
-  // Save state after each meaningful step change
+  // Save state after each meaningful step change (including when draft ID arrives)
   useEffect(() => {
     if (step >= 2 && selectedProfile) saveWizardState();
-  }, [step, selectedProfile, selectedLang, selectedInterests, pageCount, saveWizardState]);
+  }, [step, selectedProfile, selectedLang, selectedInterests, pageCount, draftStoryId, saveWizardState]);
 
   // Restore wizard state on mount
   useEffect(() => {
@@ -406,8 +422,10 @@ export default function CreateStory() {
         if (saved.pageCount) setPageCount(saved.pageCount);
         if (saved.customIncident) setCustomIncident(saved.customIncident);
         if (saved.nativeChildName) setNativeChildName(saved.nativeChildName);
-        // Restore step (but don't go to step 5 — draft would need regeneration)
-        if (saved.step && saved.step >= 2 && saved.step <= 4) {
+        if (saved.draftStoryId) setDraftStoryId(saved.draftStoryId);
+        if (saved.draftTitle) setDraftTitle(saved.draftTitle);
+        // Restore step — step 5 is OK because we'll load the existing draft from Firestore
+        if (saved.step && saved.step >= 2 && saved.step <= 5) {
           setStep(saved.step);
         }
       }, 500);
@@ -570,6 +588,13 @@ export default function CreateStory() {
       setEditedPages(draftPages);
       setDraftStatus("draft_ready");
       setDraftLoading(false);
+      // Update URL to /create/:storyId so the session is bookmarkable/resumable
+      navigate(`/create/${storyId}`, { replace: true });
+      // Persist template & nativeChildName into the Firestore doc
+      updateDoc(firestoreDoc(db, "stories", storyId), {
+        selected_template: selectedTemplate || null,
+        native_child_name: nativeChildName.trim() || null,
+      }).catch(() => {/* best-effort */});
     } catch (e) {
       setDraftError("Failed to generate story. Please try again.");
       setDraftLoading(false);
@@ -579,10 +604,9 @@ export default function CreateStory() {
   const handleApprove = async () => {
     if (!draftStoryId || editedPages.length === 0) return;
 
-    // If payments are disabled, skip Razorpay and directly approve
-    if (!paymentsEnabled) {
-      try {
-        setApproving(true);
+    // Payments disabled — directly approve and generate illustrations
+    try {
+      setApproving(true);
         const approveFn = httpsCallable<
           {storyId: string; pagesText: {page: number; text: string}[]},
           {storyId: string; status: string}
@@ -591,88 +615,46 @@ export default function CreateStory() {
         clearWizardState();
         toast.success("Generating illustrations...");
         navigate(`/story/${draftStoryId}`);
-      } catch (e) {
-        toast.error("Story generation failed. Please try again.");
-        setApproving(false);
-      }
-      return;
-    }
-
-    // Trigger Razorpay payment first
-    try {
-      setApproving(true);
-
-      // Create order
-      const orderRes = await axios.post(`${API}/payments/create-order`, {
-        page_count: pageCount,
-        story_id: draftStoryId,
-      });
-      const { order_id, amount, currency, key_id } = orderRes.data;
-
-      // Open Razorpay checkout
-      const options = {
-        key: key_id,
-        amount,
-        currency,
-        order_id,
-        name: "Tingu Tales",
-        description: `${pageCount}-page Storybook`,
-        image: "/logo-icon.svg",
-        handler: async (response) => {
-          // Verify payment
-          try {
-            await axios.post(`${API}/payments/verify`, {
-              razorpay_order_id: response.razorpay_order_id,
-              razorpay_payment_id: response.razorpay_payment_id,
-              razorpay_signature: response.razorpay_signature,
-            });
-            // Payment verified — now approve and generate
-            const approveFn = httpsCallable<
-              {storyId: string; pagesText: {page: number; text: string}[]},
-              {storyId: string; status: string}
-            >(functions, "approveStoryDraft");
-            await approveFn({storyId: draftStoryId, pagesText: editedPages});
-            clearWizardState();
-            toast.success("Payment successful! Generating illustrations...");
-            navigate(`/story/${draftStoryId}`);
-          } catch (e) {
-            toast.error("Payment verified but story generation failed. Contact support.");
-            setApproving(false);
-          }
-        },
-        prefill: {
-          name: user?.name || "",
-          email: user?.email || "",
-        },
-        theme: {
-          color: "#FF9F1C",
-        },
-        modal: {
-          ondismiss: () => {
-            setApproving(false);
-            toast.info("Payment cancelled");
-          },
-        },
-      };
-
-      const rzp = new window.Razorpay(options);
-      rzp.on("payment.failed", (response) => {
-        setApproving(false);
-        toast.error("Payment failed. Please try again.");
-      });
-      rzp.open();
     } catch (e) {
-      toast.error("Could not initiate payment");
+      toast.error("Story generation failed. Please try again.");
       setApproving(false);
     }
   };
 
-  // Auto-trigger draft when entering step 5; reset when leaving
+  // Auto-trigger draft when entering step 5; reset when navigating back to early steps
   useEffect(() => {
-    if (step === 5 && !draftStoryId && !draftLoading) {
-      handleGenerateDraft();
+    if (step === 5) {
+      if (draftStoryId && editedPages.length === 0 && !draftLoading) {
+        // Resume: load existing draft from Firestore instead of regenerating
+        setDraftLoading(true);
+        setDraftStatus("loading");
+        getDoc(firestoreDoc(db, "stories", draftStoryId)).then((snap) => {
+          if (snap.exists()) {
+            const data = snap.data();
+            if (data.status === "draft_ready" && data.draft_pages?.length > 0) {
+              setDraftTitle(data.title || "");
+              setEditedPages(data.draft_pages.map((p: {page: number; text: string}) => ({page: p.page, text: p.text})));
+              setDraftStatus("draft_ready");
+              setDraftLoading(false);
+              // Ensure URL reflects this story ID
+              navigate(`/create/${draftStoryId}`, { replace: true });
+              return;
+            }
+          }
+          // Doc missing or not ready — fall back to generating
+          setDraftStoryId(null);
+          setDraftTitle("");
+          handleGenerateDraft();
+        }).catch(() => {
+          setDraftStoryId(null);
+          handleGenerateDraft();
+        });
+      } else if (!draftStoryId && !draftLoading) {
+        handleGenerateDraft();
+      }
     }
-    if (step !== 5) {
+    // Only clear draft when user navigates back to steps 1–3 (changing key params)
+    if (step < 4) {
       setDraftStoryId(null);
       setDraftLoading(false);
       setDraftStatus("");
@@ -684,8 +666,40 @@ export default function CreateStory() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step]);
 
+  // Advance loading steps on a timer while generation is running
+  const LOADING_STEPS = [
+    { label: "Reading the profile...", sub: `Getting to know ${selectedProfile?.name || "your child"}`, delay: 0 },
+    { label: "Understanding the interests...", sub: "Picking the best themes for the story", delay: 8000 },
+    { label: "Planning the story arc...", sub: "Mapping out the adventure, beat by beat", delay: 22000 },
+    { label: `Writing in ${selectedLang?.name || "your language"}...`, sub: "Crafting every sentence with care", delay: 42000 },
+    { label: "Checking quality...", sub: "Making sure every word is just right", delay: 100000 },
+    { label: "Putting on the finishing touches...", sub: "Almost ready!", delay: 140000 },
+  ];
+
+  useEffect(() => {
+    // Clear any existing timers
+    loadingTimersRef.current.forEach(clearTimeout);
+    loadingTimersRef.current = [];
+
+    if (!draftLoading) {
+      setLoadingStep(0);
+      return;
+    }
+
+    setLoadingStep(0);
+    LOADING_STEPS.slice(1).forEach((s, i) => {
+      const t = setTimeout(() => setLoadingStep(i + 1), s.delay);
+      loadingTimersRef.current.push(t);
+    });
+
+    return () => {
+      loadingTimersRef.current.forEach(clearTimeout);
+      loadingTimersRef.current = [];
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftLoading]);
+
   const canProceed = () => {
-    if (step === 1) return !!selectedProfile;
     if (step === 2) return !!selectedLang;
     if (step === 3) return selectedInterests.length > 0;
     if (step === 4) return true;
@@ -867,7 +881,7 @@ export default function CreateStory() {
                         />
                       ) : (p.photo_download_url || p.photo_url) ? (
                         <BlurImage
-                          src={p.photo_download_url || `${API}/files/${p.photo_url}`}
+                          src={p.photo_download_url || p.photo_url}
                           alt={p.name}
                           className="w-full h-full object-cover rounded-2xl"
                         />
@@ -1537,18 +1551,54 @@ export default function CreateStory() {
                   <h2 className="text-2xl sm:text-3xl tracking-tight font-medium text-[#1E1B4B]" style={{ fontFamily: "Fredoka" }}>
                     Writing your story...
                   </h2>
-                  <p className="text-[#1E1B4B]/60 mt-2">
-                    {{
-                      drafting: "Getting started...",
-                      understanding_input: "Understanding interests...",
-                      planning_story: "Planning the story...",
-                      writing_story: `Writing in ${selectedLang?.name}...`,
-                      quality_check: "Checking quality...",
-                    }[draftStatus] || "Working on it..."}
-                  </p>
+                  <p className="text-[#1E1B4B]/50 mt-1 text-sm">This usually takes 1–2 minutes</p>
                 </div>
+
+                {/* Step progress */}
+                <div className="max-w-md mx-auto mb-10 space-y-3">
+                  {LOADING_STEPS.map((s, i) => {
+                    const isDone = i < loadingStep;
+                    const isActive = i === loadingStep;
+                    return (
+                      <div
+                        key={i}
+                        className={`flex items-center gap-3 px-4 py-3 rounded-2xl transition-all duration-500 ${
+                          isActive ? "bg-[#FF9F1C]/10 border-2 border-[#FF9F1C]/30" :
+                          isDone  ? "bg-[#2A9D8F]/6 border-2 border-[#2A9D8F]/20" :
+                                    "bg-white border-2 border-[#F3E8FF] opacity-40"
+                        }`}
+                      >
+                        <div className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 ${
+                          isDone  ? "bg-[#2A9D8F]" :
+                          isActive ? "bg-[#FF9F1C]" :
+                                     "bg-[#F3E8FF]"
+                        }`}>
+                          {isDone ? (
+                            <Check className="w-4 h-4 text-white" strokeWidth={2.5} />
+                          ) : isActive ? (
+                            <Sparkles className="w-3.5 h-3.5 text-white animate-pulse" strokeWidth={2} />
+                          ) : (
+                            <span className="w-2 h-2 rounded-full bg-[#1E1B4B]/20" />
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className={`text-sm font-semibold ${
+                            isActive ? "text-[#1E1B4B]" :
+                            isDone  ? "text-[#2A9D8F]" :
+                                      "text-[#1E1B4B]/40"
+                          }`}>{s.label}</p>
+                          {isActive && (
+                            <p className="text-xs text-[#1E1B4B]/50 mt-0.5">{s.sub}</p>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Page skeleton placeholders */}
                 <div className="space-y-4 max-w-2xl mx-auto">
-                  {Array.from({ length: pageCount }).map((_, i) => (
+                  {Array.from({ length: Math.min(pageCount, 4) }).map((_, i) => (
                     <div key={i} className="rounded-3xl border-2 border-[#F3E8FF] bg-white p-5 animate-pulse">
                       <div className="h-3 bg-[#F3E8FF] rounded-full w-24 mb-4" />
                       <div className="space-y-2">
