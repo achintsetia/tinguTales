@@ -20,6 +20,8 @@ export default function AdminPage() {
   const navigate = useNavigate();
   const [stats, setStats] = useState(null);
   const [payments, setPayments] = useState([]);
+  const [stories, setStories] = useState<any[]>([]);
+  const [userEmailById, setUserEmailById] = useState<Record<string, string>>({});
   const [tab, setTab] = useState("overview");
   const [loading, setLoading] = useState(true);
   const [paymentsEnabled, setPaymentsEnabled] = useState(true);
@@ -36,6 +38,15 @@ export default function AdminPage() {
   const [savingWhitelistUser, setSavingWhitelistUser] = useState<string | null>(null);
   const [whitelistEmail, setWhitelistEmail] = useState("");
   const [addingWhitelistEmail, setAddingWhitelistEmail] = useState(false);
+
+  // Coupons tab state
+  const [coupons, setCoupons] = useState<any[]>([]);
+  const [loadingCoupons, setLoadingCoupons] = useState(false);
+  const [couponCodeInput, setCouponCodeInput] = useState("");
+  const [couponUsageInput, setCouponUsageInput] = useState("");
+  const [couponDiscountInput, setCouponDiscountInput] = useState("");
+  const [addingCoupon, setAddingCoupon] = useState(false);
+  const [deletingCoupon, setDeletingCoupon] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user?.is_admin) {
@@ -55,6 +66,12 @@ export default function AdminPage() {
         getDoc(doc(db, "pricing", "public")),
       ]);
       const allStories = storiesSnap.docs.map((d) => d.data());
+      const storyRows = storiesSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      const userRows = usersSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      const emailMap = userRows.reduce((acc: Record<string, string>, u: any) => {
+        acc[u.id] = u.email || "";
+        return acc;
+      }, {});
       const allPayments = paymentsSnap.docs.map((d) => d.data());
       const totalRevenue = allPayments
         .filter((p) => p.status === "paid")
@@ -68,6 +85,8 @@ export default function AdminPage() {
         processing_jobs: 0,
       });
       setPayments(allPayments);
+      setStories(storyRows);
+      setUserEmailById(emailMap);
       if (pricingSnap.exists()) {
         setPaymentsEnabled(pricingSnap.data().payments_enabled ?? false);
       }
@@ -111,10 +130,104 @@ export default function AdminPage() {
 
   const TABS = [
     { id: "overview", label: "Overview" },
+    { id: "stories", label: "Stories" },
     { id: "whitelist", label: "Whitelist" },
+    { id: "coupons", label: "Coupons" },
     { id: "payments", label: "Payments" },
     { id: "costs", label: "Costs" },
   ];
+
+  const generatedStories = stories
+    .filter((s: any) => s.status === "completed" || !!s.pdf_url)
+    .sort((a: any, b: any) => {
+      const aTs = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const bTs = b.created_at ? new Date(b.created_at).getTime() : 0;
+      return bTs - aTs;
+    });
+
+  const getStoryCoverThumbnail = (story: any) => {
+    if (story?.cover_image_url) return story.cover_image_url;
+    if (Array.isArray(story?.pages) && story.pages.length > 0) {
+      const coverPage = story.pages.find((p: any) => p?.page === 0) || story.pages[0];
+      return coverPage?.image_url || "";
+    }
+    return "";
+  };
+
+  const fetchCoupons = async () => {
+    setLoadingCoupons(true);
+    try {
+      const snap = await getDocs(query(collection(db, "discount_coupons"), orderBy("created_at", "desc")));
+      setCoupons(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+    } catch {
+      toast.error("Failed to load coupons");
+    } finally {
+      setLoadingCoupons(false);
+    }
+  };
+
+  const handleAddCoupon = async () => {
+    const code = couponCodeInput.trim().toUpperCase();
+    const allowedUsage = Number(couponUsageInput);
+    const discountPercent = Number(couponDiscountInput);
+
+    if (!/^[A-Z0-9_-]{3,30}$/.test(code)) {
+      toast.error("Coupon code must be 3-30 chars (A-Z, 0-9, _ or -)");
+      return;
+    }
+    if (!Number.isInteger(allowedUsage) || allowedUsage <= 0) {
+      toast.error("Allowed usage must be a positive whole number");
+      return;
+    }
+    if (!Number.isFinite(discountPercent) || discountPercent <= 0 || discountPercent > 100) {
+      toast.error("Discount % must be more than 0 and up to 100");
+      return;
+    }
+
+    setAddingCoupon(true);
+    try {
+      const couponRef = doc(db, "discount_coupons", code);
+      const existing = await getDoc(couponRef);
+      if (existing.exists()) {
+        toast.error("Coupon code already exists");
+        return;
+      }
+
+      await setDoc(couponRef, {
+        code,
+        active: true,
+        discount_percent: Number(discountPercent.toFixed(2)),
+        initial_uses: allowedUsage,
+        remaining_uses: allowedUsage,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        created_by: user?.id || "",
+      });
+
+      setCouponCodeInput("");
+      setCouponUsageInput("");
+      setCouponDiscountInput("");
+      toast.success("Coupon added");
+      await fetchCoupons();
+    } catch {
+      toast.error("Failed to add coupon");
+    } finally {
+      setAddingCoupon(false);
+    }
+  };
+
+  const handleDeleteCoupon = async (couponId: string) => {
+    setDeletingCoupon(couponId);
+    try {
+      await deleteDoc(doc(db, "discount_coupons", couponId));
+      setCoupons((prev) => prev.filter((c) => c.id !== couponId));
+      toast.success("Coupon removed");
+    } catch {
+      toast.error("Failed to remove coupon");
+    } finally {
+      setDeletingCoupon(null);
+    }
+  };
 
   const fetchWhitelistData = async () => {
     setLoadingWhitelist(true);
@@ -311,6 +424,7 @@ export default function AdminPage() {
                 setTab(t.id);
                 if (t.id === "costs" && !costReport) fetchCosts();
                 if (t.id === "whitelist") fetchWhitelistData();
+                if (t.id === "coupons") fetchCoupons();
               }}
               className={`rounded-full px-5 py-2.5 text-sm font-semibold transition-all ${
                 tab === t.id
@@ -524,6 +638,157 @@ export default function AdminPage() {
           </div>
         )}
 
+        {/* Stories Tab */}
+        {tab === "stories" && (
+          <div data-testid="admin-stories">
+            <p className="text-sm text-[#1E1B4B]/50 mb-4">{generatedStories.length} generated story(s)</p>
+            <div className="space-y-2">
+              {generatedStories.length === 0 ? (
+                <p className="text-center py-12 text-[#1E1B4B]/40">No generated stories yet</p>
+              ) : (
+                generatedStories.map((s: any) => (
+                  <div key={s.id} className="flex items-center gap-3 p-4 rounded-xl bg-white border-2 border-[#F3E8FF]">
+                    <div className="w-14 h-18 rounded-lg overflow-hidden bg-gradient-to-br from-[#3730A3]/10 to-[#FF9F1C]/10 flex-shrink-0">
+                      {getStoryCoverThumbnail(s) ? (
+                        <img
+                          src={getStoryCoverThumbnail(s)}
+                          alt={s.title || "Story cover"}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center">
+                          <BookOpen className="w-5 h-5 text-[#1E1B4B]/25" strokeWidth={2} />
+                        </div>
+                      )}
+                    </div>
+                    <Badge className={`${STORY_STATUS_COLORS[s.status] || "bg-[#2A9D8F]/15 text-[#2A9D8F]"} rounded-full px-2.5 py-0.5 text-xs font-semibold border-0`}>
+                      {s.status || "completed"}
+                    </Badge>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-[#1E1B4B] truncate">{s.title || "Untitled Story"}</p>
+                      <p className="text-xs text-[#1E1B4B]/50 truncate">
+                        {userEmailById[s.user_id] || s.user_email || "Unknown user"}
+                      </p>
+                      <p className="text-xs text-[#1E1B4B]/40">
+                        {s.created_at ? new Date(s.created_at).toLocaleString("en-IN", { dateStyle: "short", timeStyle: "short" }) : ""}
+                      </p>
+                    </div>
+                    {s.pdf_url ? (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => window.open(s.pdf_url, "_blank")}
+                        className="rounded-full border-[#3730A3]/30 text-[#3730A3] hover:bg-[#3730A3]/10 text-xs"
+                      >
+                        Open PDF
+                      </Button>
+                    ) : (
+                      <span className="text-xs text-[#1E1B4B]/35">PDF not ready</span>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        )}
+
+        {tab === "coupons" && (
+          <div data-testid="admin-coupons">
+            <Card className="rounded-2xl border-2 border-[#F3E8FF] mb-4">
+              <CardContent className="p-4">
+                <p className="text-sm font-semibold text-[#1E1B4B] mb-3" style={{ fontFamily: "Fredoka" }}>
+                  Add Discount Coupon
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-[1fr_140px_140px_auto] gap-2">
+                  <Input
+                    value={couponCodeInput}
+                    onChange={(e) => setCouponCodeInput(e.target.value)}
+                    placeholder="Coupon code (e.g. SUMMER50)"
+                    className="rounded-full border-[#F3E8FF]"
+                  />
+                  <Input
+                    value={couponDiscountInput}
+                    onChange={(e) => setCouponDiscountInput(e.target.value)}
+                    placeholder="Discount %"
+                    type="number"
+                    min={1}
+                    max={100}
+                    step="0.01"
+                    className="rounded-full border-[#F3E8FF]"
+                  />
+                  <Input
+                    value={couponUsageInput}
+                    onChange={(e) => setCouponUsageInput(e.target.value)}
+                    placeholder="Allowed usage"
+                    type="number"
+                    min={1}
+                    className="rounded-full border-[#F3E8FF]"
+                  />
+                  <Button
+                    onClick={handleAddCoupon}
+                    disabled={addingCoupon}
+                    className="rounded-full bg-[#2A9D8F] hover:bg-[#238f82] text-white"
+                  >
+                    {addingCoupon ? "Adding…" : "Add Coupon"}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-sm text-[#1E1B4B]/50">{coupons.length} coupon(s)</p>
+              <Button
+                variant="outline"
+                onClick={fetchCoupons}
+                disabled={loadingCoupons}
+                className="rounded-full border-[#F3E8FF]"
+              >
+                <RefreshCw className={`w-4 h-4 mr-2 ${loadingCoupons ? "animate-spin" : ""}`} strokeWidth={2} />
+                Refresh
+              </Button>
+            </div>
+
+            {loadingCoupons ? (
+              <div className="flex items-center justify-center py-10 text-[#1E1B4B]/40">
+                <RefreshCw className="w-5 h-5 animate-spin mr-2" />
+                Loading coupons…
+              </div>
+            ) : coupons.length === 0 ? (
+              <p className="text-center py-10 text-[#1E1B4B]/40">No coupons configured</p>
+            ) : (
+              <div className="space-y-2">
+                {coupons.map((c: any) => (
+                  <Card key={c.id} className="rounded-2xl border-2 border-[#F3E8FF]">
+                    <CardContent className="p-4 flex items-center gap-3">
+                      <Badge className="bg-[#3730A3]/15 text-[#3730A3] border-0 rounded-full px-2.5 py-0.5 text-xs font-semibold">
+                        {c.code || c.id}
+                      </Badge>
+                      <Badge className="bg-[#2A9D8F]/15 text-[#2A9D8F] border-0 rounded-full px-2.5 py-0.5 text-xs font-semibold">
+                        {Number(c.discount_percent ?? 0)}% off
+                      </Badge>
+                      <p className="text-sm text-[#1E1B4B]/70">
+                        Remaining: <span className="font-semibold text-[#1E1B4B]">{Number(c.remaining_uses ?? 0)}</span>
+                      </p>
+                      <p className="text-xs text-[#1E1B4B]/40">/ Initial: {Number(c.initial_uses ?? 0)}</p>
+                      <span className="flex-1" />
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleDeleteCoupon(c.id)}
+                        disabled={deletingCoupon === c.id}
+                        className="rounded-full border-[#E76F51]/30 text-[#E76F51] hover:bg-[#E76F51]/10 text-xs"
+                      >
+                        <Trash2 className="w-3.5 h-3.5 mr-1" strokeWidth={2} />
+                        {deletingCoupon === c.id ? "Removing…" : "Remove"}
+                      </Button>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Payments Tab */}
         {tab === "payments" && (
           <div data-testid="admin-payments">
@@ -539,6 +804,13 @@ export default function AdminPage() {
                     </Badge>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-[#1E1B4B]">₹{p.amount} — {p.page_count} pages</p>
+                      {!!p.discount_amount && (
+                        <p className="text-xs text-[#2A9D8F]">
+                          Discount: ₹{p.discount_amount}
+                          {p.coupon_code ? ` (${p.coupon_code})` : ""}
+                          {p.discount_percent ? ` · ${p.discount_percent}%` : ""}
+                        </p>
+                      )}
                       <p className="text-xs text-[#1E1B4B]/40 font-mono truncate">{p.order_id}</p>
                     </div>
                     <span className="text-xs text-[#1E1B4B]/30">

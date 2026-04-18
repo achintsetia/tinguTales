@@ -165,7 +165,13 @@ export default function StoryViewer() {
     // Use real-time livePages from subcollection; fall back to placeholders
     const inProgressPages = livePages.length > 0
       ? livePages
-      : Array.from({ length: pageCount }, (_, i) => ({ page_number: i, image_url: null, jpeg_url: null }));
+      : Array.from({ length: pageCount }, (_, i) => ({
+        page_number: i,
+        image_url: null,
+        jpeg_url: null,
+        text: "",
+        status: "pending",
+      }));
 
     const doneCount = inProgressPages.filter(p => p.jpeg_url || p.image_url).length;
 

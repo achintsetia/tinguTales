@@ -228,6 +228,34 @@ const STEPS = [
 
 const FALLBACK_PRICING_TABLE: Record<number, number> = { 6: 79, 8: 99, 10: 129, 12: 149 };
 
+type RedeemCouponResponse = {
+  code: string;
+  discountPercent: number;
+  remainingUses: number;
+  success: boolean;
+};
+
+type CreateOrderResponse = {
+  requiresPayment: boolean;
+  paymentDocId: string;
+  orderId?: string;
+  razorpayKeyId?: string;
+  amountBeforeDiscount: number;
+  discountAmount: number;
+  discountPercent: number;
+  amount: number;
+  currency: string;
+};
+
+declare global {
+  interface Window {
+    Razorpay?: new (options: Record<string, unknown>) => {
+      open: () => void;
+      on: (event: string, handler: (response: unknown) => void) => void;
+    };
+  }
+}
+
 export default function CreateStory() {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -264,7 +292,12 @@ export default function CreateStory() {
   const [loadingProfiles, setLoadingProfiles] = useState(true);
   const [savingProfile, setSavingProfile] = useState(false);
   const [photoPreview, setPhotoPreview] = useState(null);
-  const [paymentsEnabled] = useState(false);
+  const [paymentsEnabled, setPaymentsEnabled] = useState(false);
+  const [couponCode, setCouponCode] = useState("");
+  const [couponApplied, setCouponApplied] = useState<{ code: string; discountPercent: number } | null>(null);
+  const [applyingCoupon, setApplyingCoupon] = useState(false);
+  const [checkoutLoading, setCheckoutLoading] = useState(false);
+  const [razorpayLoaded, setRazorpayLoaded] = useState(false);
   const [pricingByPages, setPricingByPages] = useState<Record<number, number>>(FALLBACK_PRICING_TABLE);
   const [deleteUploadPrompt, setDeleteUploadPrompt] = useState<{
     profileId: string; photoPath: string; profileName: string;
@@ -314,7 +347,22 @@ export default function CreateStory() {
   }, [user?.id]);
 
   useEffect(() => {
-    // Razorpay script is not needed — payments are currently disabled
+    const existing = document.querySelector<HTMLScriptElement>('script[src="https://checkout.razorpay.com/v1/checkout.js"]');
+    if (existing) {
+      setRazorpayLoaded(true);
+      return;
+    }
+
+    const script = document.createElement("script");
+    script.src = "https://checkout.razorpay.com/v1/checkout.js";
+    script.async = true;
+    script.onload = () => setRazorpayLoaded(true);
+    script.onerror = () => setRazorpayLoaded(false);
+    document.body.appendChild(script);
+
+    return () => {
+      // Keep script cached across navigations.
+    };
   }, []);
 
   useEffect(() => {
@@ -338,6 +386,7 @@ export default function CreateStory() {
         if (Object.keys(map).length > 0) {
           setPricingByPages(map);
         }
+        setPaymentsEnabled(data.payments_enabled === true);
       })
       .catch((err) => {
         console.error("Failed to load pricing tiers:", err);
@@ -712,7 +761,7 @@ export default function CreateStory() {
   const handleApprove = async () => {
     if (!draftStoryId || editedPages.length === 0) return;
 
-    // Payments disabled — directly approve and generate illustrations
+    // Approve and trigger illustration generation
     try {
       setApproving(true);
         const approveFn = httpsCallable<
@@ -729,8 +778,146 @@ export default function CreateStory() {
     }
   };
 
+  const handleApplyCoupon = async () => {
+    const code = couponCode.trim().toUpperCase();
+    if (!code) {
+      toast.error("Enter a coupon code");
+      return;
+    }
+
+    setApplyingCoupon(true);
+    try {
+      const redeemCouponFn = httpsCallable<{code: string}, RedeemCouponResponse>(functions, "redeemDiscountCoupon");
+      const result = await redeemCouponFn({code});
+      const discountPercent = Number(result.data?.discountPercent ?? 0);
+      if (!Number.isFinite(discountPercent) || discountPercent <= 0) {
+        toast.error("Coupon is invalid");
+        return;
+      }
+      setCouponApplied({code: result.data.code || code, discountPercent});
+      toast.success(`Coupon applied: ${discountPercent}% off`);
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to apply coupon");
+    } finally {
+      setApplyingCoupon(false);
+    }
+  };
+
+  const handlePaidApprove = async () => {
+    if (!draftStoryId || editedPages.length === 0 || checkoutLoading || approving) return;
+
+    setCheckoutLoading(true);
+    let waitingForRazorpayCompletion = false;
+    try {
+      const createOrderFn = httpsCallable<
+        {storyId: string; couponCode?: string; discountPercent?: number},
+        CreateOrderResponse
+      >(functions, "createStoryPaymentOrder");
+
+      const orderResult = await createOrderFn({
+        storyId: draftStoryId,
+        couponCode: couponApplied?.code,
+        discountPercent: couponApplied?.discountPercent,
+      });
+      const orderData = orderResult.data;
+
+      if (!orderData.requiresPayment || orderData.amount <= 0) {
+        setShowApproveWarning(false);
+        await handleApprove();
+        return;
+      }
+
+      if (!window.Razorpay || !razorpayLoaded) {
+        toast.error("Payment UI failed to load. Please refresh and try again.");
+        return;
+      }
+
+      const verifyPaymentFn = httpsCallable<
+        {paymentDocId: string; razorpayOrderId: string; razorpayPaymentId: string; razorpaySignature: string},
+        {success: boolean}
+      >(functions, "verifyStoryPayment");
+      const markPaymentFailedFn = httpsCallable<{paymentDocId: string; reason?: string}, {success: boolean}>(
+        functions,
+        "markStoryPaymentFailed",
+      );
+
+      const razorpay = new window.Razorpay({
+        key: orderData.razorpayKeyId,
+        amount: orderData.amount * 100,
+        currency: orderData.currency || "INR",
+        name: "Tingu Tales",
+        description: `${pageCount}-page personalized storybook`,
+        order_id: orderData.orderId,
+        prefill: {
+          email: user?.email || "",
+          name: user?.name || "",
+        },
+        notes: {
+          story_id: draftStoryId,
+          payment_doc_id: orderData.paymentDocId,
+        },
+        theme: {
+          color: "#FF9F1C",
+        },
+        modal: {
+          ondismiss: async () => {
+            try {
+              await markPaymentFailedFn({
+                paymentDocId: orderData.paymentDocId,
+                reason: "user_dismissed",
+              });
+            } catch {
+              // Ignore network failure on dismissal.
+            }
+          },
+        },
+        handler: async (response: any) => {
+          try {
+            await verifyPaymentFn({
+              paymentDocId: orderData.paymentDocId,
+              razorpayOrderId: response.razorpay_order_id,
+              razorpayPaymentId: response.razorpay_payment_id,
+              razorpaySignature: response.razorpay_signature,
+            });
+            setShowApproveWarning(false);
+            await handleApprove();
+          } catch (e: any) {
+            toast.error(e?.message || "Payment verification failed");
+          } finally {
+            setCheckoutLoading(false);
+          }
+        },
+      });
+
+      razorpay.on("payment.failed", async (response: any) => {
+        try {
+          const reason = response?.error?.description || response?.error?.reason || "payment_failed";
+          await markPaymentFailedFn({
+            paymentDocId: orderData.paymentDocId,
+            reason,
+          });
+        } catch {
+          // Ignore network failure after payment failure.
+        } finally {
+          setCheckoutLoading(false);
+        }
+      });
+
+      waitingForRazorpayCompletion = true;
+      razorpay.open();
+    } catch (e: any) {
+      toast.error(e?.message || "Could not start checkout");
+    } finally {
+      if (!waitingForRazorpayCompletion) {
+        setCheckoutLoading(false);
+      }
+    }
+  };
+
   const handleApproveClick = () => {
     if (!draftStoryId || editedPages.length === 0 || approving) return;
+    setCouponCode("");
+    setCouponApplied(null);
     setShowApproveWarning(true);
   };
 
@@ -880,18 +1067,56 @@ export default function CreateStory() {
         </DialogContent>
       </Dialog>
 
-      {/* Story-approval warning dialog */}
+      {/* Story-approval and payment dialog */}
       <Dialog open={showApproveWarning} onOpenChange={setShowApproveWarning}>
         <DialogContent className="rounded-3xl border-2 border-[#F3E8FF] max-w-md">
           <DialogHeader>
             <DialogTitle style={{ fontFamily: "Fredoka" }} className="text-[#1E1B4B] text-xl">
-              One quick check before we begin
+              {paymentsEnabled ? "Ready to checkout" : "One quick check before we begin"}
             </DialogTitle>
           </DialogHeader>
           <DialogDescription className="text-sm text-[#1E1B4B]/75 mt-1 leading-relaxed">
             Please review your story carefully. Once illustration generation starts,
             you won't be able to edit the story text.
           </DialogDescription>
+          {paymentsEnabled && (
+            <div className="rounded-2xl border border-[#F3E8FF] p-4 bg-[#FDFBF7] mt-2 space-y-3">
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-[#1E1B4B]/60">Book price ({pageCount} pages)</span>
+                <span className="font-semibold text-[#1E1B4B]">₹{currentBookPrice}</span>
+              </div>
+              {couponApplied && (
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-[#2A9D8F]">Coupon {couponApplied.code} ({couponApplied.discountPercent}% off)</span>
+                  <span className="font-semibold text-[#2A9D8F]">
+                    -₹{Math.round((currentBookPrice * couponApplied.discountPercent) / 100)}
+                  </span>
+                </div>
+              )}
+              <div className="pt-2 border-t border-[#F3E8FF] flex items-center justify-between">
+                <span className="font-semibold text-[#1E1B4B]">Payable</span>
+                <span className="text-xl font-bold text-[#1E1B4B]" style={{ fontFamily: "Fredoka" }}>
+                  ₹{Math.max(0, currentBookPrice - Math.round((currentBookPrice * (couponApplied?.discountPercent || 0)) / 100))}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Input
+                  value={couponCode}
+                  onChange={(e) => setCouponCode(e.target.value)}
+                  placeholder="Coupon code"
+                  className="rounded-full border-[#F3E8FF]"
+                />
+                <Button
+                  variant="outline"
+                  className="rounded-full border-[#F3E8FF]"
+                  disabled={applyingCoupon || !couponCode.trim()}
+                  onClick={handleApplyCoupon}
+                >
+                  {applyingCoupon ? "Applying..." : "Apply"}
+                </Button>
+              </div>
+            </div>
+          )}
           <div className="flex gap-3 mt-4">
             <Button
               variant="outline"
@@ -902,12 +1127,21 @@ export default function CreateStory() {
             </Button>
             <Button
               className="flex-1 rounded-full bg-[#FF9F1C] hover:bg-[#E88A12] text-[#1E1B4B] font-bold"
+              disabled={checkoutLoading || approving}
               onClick={() => {
+                if (paymentsEnabled) {
+                  handlePaidApprove();
+                  return;
+                }
                 setShowApproveWarning(false);
                 handleApprove();
               }}
             >
-              Yes, Start Creating
+              {checkoutLoading
+                ? "Starting checkout..."
+                : paymentsEnabled
+                ? "Proceed to Pay"
+                : "Yes, Start Creating"}
             </Button>
           </div>
         </DialogContent>
