@@ -226,7 +226,7 @@ const STEPS = [
   { num: 5, label: "Review" },
 ];
 
-const PRICING_TABLE = { 6: 79, 8: 99, 10: 129, 12: 149 };
+const FALLBACK_PRICING_TABLE: Record<number, number> = { 6: 79, 8: 99, 10: 129, 12: 149 };
 
 export default function CreateStory() {
   const { user } = useAuth();
@@ -265,10 +265,12 @@ export default function CreateStory() {
   const [savingProfile, setSavingProfile] = useState(false);
   const [photoPreview, setPhotoPreview] = useState(null);
   const [paymentsEnabled] = useState(false);
+  const [pricingByPages, setPricingByPages] = useState<Record<number, number>>(FALLBACK_PRICING_TABLE);
   const [deleteUploadPrompt, setDeleteUploadPrompt] = useState<{
     profileId: string; photoPath: string; profileName: string;
   } | null>(null);
   const [deletingUpload, setDeletingUpload] = useState(false);
+  const [isWhitelisted, setIsWhitelisted] = useState<boolean | null>(null);
   // Track previous avatar statuses to detect completed transitions
   const prevStatusesRef = useRef<Record<string, string>>({});
 
@@ -314,6 +316,72 @@ export default function CreateStory() {
   useEffect(() => {
     // Razorpay script is not needed — payments are currently disabled
   }, []);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    let cancelled = false;
+
+    getDoc(firestoreDoc(db, "pricing", "public"))
+      .then((snap) => {
+        if (cancelled || !snap.exists()) return;
+        const data = snap.data();
+        if (!Array.isArray(data.tiers)) return;
+
+        const map = (data.tiers as Array<{pages: number; price: number; enabled?: boolean}>).reduce((acc, tier) => {
+          if (tier.enabled === false) return acc;
+          if (!Number.isFinite(tier.pages) || !Number.isFinite(tier.price)) return acc;
+          if (tier.pages <= 0 || tier.price <= 0) return acc;
+          acc[tier.pages] = Math.round(tier.price);
+          return acc;
+        }, {} as Record<number, number>);
+
+        if (Object.keys(map).length > 0) {
+          setPricingByPages(map);
+        }
+      })
+      .catch((err) => {
+        console.error("Failed to load pricing tiers:", err);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id]);
+
+  const getBookPrice = (pages: number) => (
+    pricingByPages[pages] ?? FALLBACK_PRICING_TABLE[pages] ?? pages * 13
+  );
+
+  const currentBookPrice = getBookPrice(pageCount);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    if (user.is_admin) {
+      setIsWhitelisted(true);
+      return;
+    }
+
+    let cancelled = false;
+    const emailKey = user.email ? `email:${user.email.trim().toLowerCase()}` : "";
+    Promise.all([
+      getDoc(firestoreDoc(db, "beta_whitelist", user.id)),
+      emailKey ? getDoc(firestoreDoc(db, "beta_whitelist", emailKey)) : Promise.resolve(null as any),
+    ])
+      .then(([uidSnap, emailSnap]) => {
+        if (cancelled) return;
+        const uidAllowed = uidSnap.exists() && uidSnap.data()?.enabled !== false;
+        const emailAllowed = !!emailSnap?.exists?.() && emailSnap.data()?.enabled !== false;
+        setIsWhitelisted(uidAllowed || emailAllowed);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setIsWhitelisted(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id, user?.email, user?.is_admin]);
 
   // Auto-transliterate child's name when language changes
   useEffect(() => {
@@ -456,6 +524,10 @@ export default function CreateStory() {
   const clearWizardState = () => localStorage.removeItem(WIZARD_KEY);
 
   const handleCreateProfile = async () => {
+    if (isWhitelisted === false) {
+      toast.error("This app is under beta testing. Contact support to get whitelisted.");
+      return;
+    }
     if (!newProfile.name || !newProfile.age) {
       toast.error("Please enter name and age");
       return;
@@ -576,6 +648,10 @@ export default function CreateStory() {
 
   // ── Draft flow ──────────────────────────────────────────────────────────
   const handleGenerateDraft = async () => {
+    if (isWhitelisted === false) {
+      setDraftError("This app is under beta testing. Contact support to get whitelisted.");
+      return;
+    }
     if (!selectedProfile || !selectedLang || selectedInterests.length === 0) return;
     setDraftLoading(true);
     setDraftError("");
@@ -751,6 +827,7 @@ export default function CreateStory() {
 
   const canProceed = () => {
     if (step === 1) {
+      if (isWhitelisted !== true) return false;
       if (!selectedProfile) return false;
       if (selectedProfile.avatar_status === "pending" || selectedProfile.avatar_status === "generating") return false;
       if (selectedProfile.avatar_status === "failed") return false;
@@ -764,6 +841,13 @@ export default function CreateStory() {
 
   return (
     <div className="min-h-screen bg-[#FDFBF7]">
+      {isWhitelisted === false && (
+        <div className="sticky top-0 z-[60] bg-[#FFF3F0] border-b border-[#F8D7D0] px-4 py-3 text-center">
+          <p className="text-sm font-semibold text-[#E76F51]" data-testid="beta-whitelist-message">
+            This app is under beta testing. Contact support to get whitelisted.
+          </p>
+        </div>
+      )}
       {/* Delete-upload confirmation dialog */}
       <Dialog open={!!deleteUploadPrompt} onOpenChange={(open) => { if (!open) setDeleteUploadPrompt(null); }}>
         <DialogContent className="rounded-3xl border-2 border-[#F3E8FF] max-w-sm">
@@ -1850,10 +1934,10 @@ export default function CreateStory() {
                   {paymentsEnabled && (
                     <div className="mb-4">
                       <span className="text-3xl font-bold text-[#1E1B4B]" style={{ fontFamily: "Fredoka" }}>
-                        ₹{PRICING_TABLE[pageCount] || pageCount * 13}
+                        ₹{currentBookPrice}
                       </span>
                       <span className="text-sm text-[#1E1B4B]/50 ml-2">
-                        for {pageCount} pages (₹{Math.round((PRICING_TABLE[pageCount] || pageCount * 13) / pageCount)}/page)
+                        for {pageCount} pages (₹{Math.round(currentBookPrice / pageCount)}/page)
                       </span>
                     </div>
                   )}
@@ -1872,7 +1956,7 @@ export default function CreateStory() {
                       <>
                         <Sparkles className="w-5 h-5 mr-2" strokeWidth={2.5} />
                         {paymentsEnabled
-                          ? `Pay ₹${PRICING_TABLE[pageCount] || pageCount * 13} & Create Storybook`
+                          ? `Pay ₹${currentBookPrice} & Create Storybook`
                           : "Create Storybook"}
                       </>
                     )}

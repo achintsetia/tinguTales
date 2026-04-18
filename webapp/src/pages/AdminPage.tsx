@@ -3,23 +3,22 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { db } from "../firebase";
 import { getFunctions, httpsCallable } from "firebase/functions";
-import { collection, getDocs, doc, getDoc, setDoc, query, orderBy, where } from "firebase/firestore";
+import { collection, getDocs, doc, getDoc, setDoc, deleteDoc, query, orderBy, where } from "firebase/firestore";
 import { toast } from "sonner";
 import { Button } from "../components/ui/button";
 import { Card, CardContent } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
 import { Switch } from "../components/ui/switch";
+import { Input } from "../components/ui/input";
 import {
   ArrowLeft, Trash2, RefreshCw, DollarSign, Users, BookOpen,
-  Activity, AlertCircle, CheckCircle, Clock, Sparkles, Undo2, Bot, ChevronDown, ChevronUp, IndianRupee,
-  RotateCcw, FileText, Image
+  Activity, Undo2, Bot, ChevronDown, ChevronUp, IndianRupee
 } from "lucide-react";
 
 export default function AdminPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [stats, setStats] = useState(null);
-  const [jobs, setJobs] = useState([]);
   const [payments, setPayments] = useState([]);
   const [tab, setTab] = useState("overview");
   const [loading, setLoading] = useState(true);
@@ -29,14 +28,14 @@ export default function AdminPage() {
   const [loadingCosts, setLoadingCosts] = useState(false);
   const [expandedUser, setExpandedUser] = useState<string | null>(null);
 
-  // Tasks tab state
-  const [activeStories, setActiveStories] = useState<any[]>([]);
-  const [loadingTasks, setLoadingTasks] = useState(false);
-  const [expandedStory, setExpandedStory] = useState<string | null>(null);
-  const [storyPages, setStoryPages] = useState<Record<string, any[]>>({});
-  const [loadingPages, setLoadingPages] = useState<string | null>(null);
-  const [retryingPage, setRetryingPage] = useState<string | null>(null);
-  const [retryingPdf, setRetryingPdf] = useState<string | null>(null);
+  // Whitelist tab state
+  const [allUsers, setAllUsers] = useState<any[]>([]);
+  const [whitelistMap, setWhitelistMap] = useState<Record<string, any>>({});
+  const [loadingWhitelist, setLoadingWhitelist] = useState(false);
+  const [whitelistSearch, setWhitelistSearch] = useState("");
+  const [savingWhitelistUser, setSavingWhitelistUser] = useState<string | null>(null);
+  const [whitelistEmail, setWhitelistEmail] = useState("");
+  const [addingWhitelistEmail, setAddingWhitelistEmail] = useState(false);
 
   useEffect(() => {
     if (!user?.is_admin) {
@@ -49,11 +48,11 @@ export default function AdminPage() {
   const fetchAll = async () => {
     setLoading(true);
     try {
-      const [storiesSnap, usersSnap, paymentsSnap, settingsSnap] = await Promise.all([
+      const [storiesSnap, usersSnap, paymentsSnap, pricingSnap] = await Promise.all([
         getDocs(collection(db, "stories")),
         getDocs(collection(db, "user_profile")),
         getDocs(query(collection(db, "payments"), orderBy("created_at", "desc"))),
-        getDoc(doc(db, "settings", "public")),
+        getDoc(doc(db, "pricing", "public")),
       ]);
       const allStories = storiesSnap.docs.map((d) => d.data());
       const allPayments = paymentsSnap.docs.map((d) => d.data());
@@ -68,10 +67,9 @@ export default function AdminPage() {
         pending_jobs: 0,
         processing_jobs: 0,
       });
-      setJobs([]);
       setPayments(allPayments);
-      if (settingsSnap.exists()) {
-        setPaymentsEnabled(settingsSnap.data().payments_enabled ?? false);
+      if (pricingSnap.exists()) {
+        setPaymentsEnabled(pricingSnap.data().payments_enabled ?? false);
       }
     } catch (e) {
       toast.error("Failed to load admin data");
@@ -83,7 +81,7 @@ export default function AdminPage() {
   const handleTogglePayments = async (checked) => {
     setTogglingPayments(true);
     try {
-      await setDoc(doc(db, "settings", "public"), { payments_enabled: checked }, { merge: true });
+      await setDoc(doc(db, "pricing", "public"), { payments_enabled: checked }, { merge: true });
       setPaymentsEnabled(checked);
       toast.success(checked ? "Payments enabled" : "Payments disabled — users can create stories for free");
     } catch (e) {
@@ -91,10 +89,6 @@ export default function AdminPage() {
     } finally {
       setTogglingPayments(false);
     }
-  };
-
-  const handleClearStale = async () => {
-    toast.info("Job queue management is not available in this version.");
   };
 
   const handleRefund = async (_paymentId) => {
@@ -115,93 +109,146 @@ export default function AdminPage() {
     }
   };
 
-  const ACTIVE_STATUSES = ["approved", "generating_scenes", "generating_images", "creating_pdf", "scenes_failed"];
-
-  const fetchActiveTasks = async () => {
-    setLoadingTasks(true);
-    try {
-      const snaps = await Promise.all(
-        ACTIVE_STATUSES.map((s) =>
-          getDocs(query(collection(db, "stories"), where("status", "==", s)))
-        )
-      );
-      const stories = snaps.flatMap((snap) =>
-        snap.docs.map((d) => ({ story_id: d.id, ...d.data() }))
-      );
-      stories.sort((a: any, b: any) => {
-        const at = a.updated_at?.toMillis?.() ?? 0;
-        const bt = b.updated_at?.toMillis?.() ?? 0;
-        return bt - at;
-      });
-      setActiveStories(stories);
-    } catch (e) {
-      toast.error("Failed to load active tasks");
-    } finally {
-      setLoadingTasks(false);
-    }
-  };
-
-  const loadStoryPages = async (storyId: string) => {
-    setLoadingPages(storyId);
-    try {
-      const snap = await getDocs(
-        query(collection(db, "stories", storyId, "pages"), orderBy("page", "asc"))
-      );
-      const pages = snap.docs.map((d) => ({ page_doc_id: d.id, ...d.data() }));
-      setStoryPages((prev) => ({ ...prev, [storyId]: pages }));
-    } catch (e) {
-      toast.error("Failed to load pages");
-    } finally {
-      setLoadingPages(null);
-    }
-  };
-
-  const handleExpandStory = (storyId: string) => {
-    if (expandedStory === storyId) {
-      setExpandedStory(null);
-      return;
-    }
-    setExpandedStory(storyId);
-    if (!storyPages[storyId]) loadStoryPages(storyId);
-  };
-
-  const handleRetryPage = async (storyId: string, pageDocId: string) => {
-    setRetryingPage(pageDocId);
-    try {
-      const fns = getFunctions(undefined, "asia-south1");
-      const fn = httpsCallable(fns, "adminRetryPageImage");
-      await fn({ storyId, pageId: pageDocId });
-      toast.success("Page re-queued");
-      await loadStoryPages(storyId);
-    } catch (e: any) {
-      toast.error(e?.message ?? "Retry failed");
-    } finally {
-      setRetryingPage(null);
-    }
-  };
-
-  const handleRetryPdf = async (storyId: string) => {
-    setRetryingPdf(storyId);
-    try {
-      const fns = getFunctions(undefined, "asia-south1");
-      const fn = httpsCallable(fns, "adminRetryPdf");
-      await fn({ storyId });
-      toast.success("PDF generation re-queued");
-      await fetchActiveTasks();
-    } catch (e: any) {
-      toast.error(e?.message ?? "Retry failed");
-    } finally {
-      setRetryingPdf(null);
-    }
-  };
-
   const TABS = [
     { id: "overview", label: "Overview" },
-    { id: "tasks", label: "Tasks" },
-    { id: "jobs", label: "Jobs" },
+    { id: "whitelist", label: "Whitelist" },
     { id: "payments", label: "Payments" },
     { id: "costs", label: "Costs" },
   ];
+
+  const fetchWhitelistData = async () => {
+    setLoadingWhitelist(true);
+    try {
+      const [usersSnap, whitelistSnap] = await Promise.all([
+        getDocs(collection(db, "user_profile")),
+        getDocs(collection(db, "beta_whitelist")),
+      ]);
+
+      const users = usersSnap.docs
+        .map((d) => ({ id: d.id, ...d.data() }))
+        .sort((a: any, b: any) => {
+          const aName = (a.name ?? "").toLowerCase();
+          const bName = (b.name ?? "").toLowerCase();
+          return aName.localeCompare(bName);
+        });
+
+      const map: Record<string, any> = {};
+      whitelistSnap.docs.forEach((d) => {
+        map[d.id] = d.data();
+      });
+
+      setAllUsers(users);
+      setWhitelistMap(map);
+    } catch (e) {
+      toast.error("Failed to load whitelist data");
+    } finally {
+      setLoadingWhitelist(false);
+    }
+  };
+
+  const handleToggleWhitelist = async (u: any, enabled: boolean) => {
+    const userId = u.uid || u.id;
+    if (!userId) return;
+    setSavingWhitelistUser(userId);
+    try {
+      const emailLower = (u.email || "").trim().toLowerCase();
+      const emailKey = emailLower ? `email:${emailLower}` : "";
+      if (enabled) {
+        await setDoc(doc(db, "beta_whitelist", userId), {
+          user_id: userId,
+          email: u.email || "",
+          email_lower: emailLower,
+          name: u.name || "",
+          enabled: true,
+          added_at: new Date().toISOString(),
+          added_by: user?.id || "",
+        }, { merge: true });
+      } else {
+        const deletes: Promise<void>[] = [deleteDoc(doc(db, "beta_whitelist", userId)) as Promise<void>];
+        if (emailKey) deletes.push(deleteDoc(doc(db, "beta_whitelist", emailKey)) as Promise<void>);
+        await Promise.all(deletes);
+      }
+
+      setWhitelistMap((prev) => {
+        if (enabled) {
+          return {
+            ...prev,
+            [userId]: {
+              ...(prev[userId] ?? {}),
+              user_id: userId,
+              email: u.email || "",
+              email_lower: emailLower,
+              name: u.name || "",
+              enabled: true,
+            },
+          };
+        }
+        const next = { ...prev };
+        delete next[userId];
+        if (emailKey) delete next[emailKey];
+        return next;
+      });
+
+      toast.success(enabled ? "User whitelisted" : "User removed from whitelist");
+    } catch (e) {
+      toast.error("Failed to update whitelist");
+    } finally {
+      setSavingWhitelistUser(null);
+    }
+  };
+
+  const normalizeEmail = (email: string) => email.trim().toLowerCase();
+
+  const handleAddWhitelistEmail = async () => {
+    const emailLower = normalizeEmail(whitelistEmail);
+    const isValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailLower);
+    if (!isValid) {
+      toast.error("Enter a valid email");
+      return;
+    }
+
+    const key = `email:${emailLower}`;
+    setAddingWhitelistEmail(true);
+    try {
+      await setDoc(doc(db, "beta_whitelist", key), {
+        email: emailLower,
+        email_lower: emailLower,
+        enabled: true,
+        added_at: new Date().toISOString(),
+        added_by: user?.id || "",
+      }, { merge: true });
+
+      setWhitelistMap((prev) => ({
+        ...prev,
+        [key]: {
+          ...(prev[key] ?? {}),
+          email: emailLower,
+          email_lower: emailLower,
+          enabled: true,
+        },
+      }));
+      setWhitelistEmail("");
+      toast.success("Email added to whitelist");
+    } catch (e) {
+      toast.error("Failed to add email");
+    } finally {
+      setAddingWhitelistEmail(false);
+    }
+  };
+
+  const handleRemoveWhitelistEmail = async (key: string) => {
+    try {
+      await deleteDoc(doc(db, "beta_whitelist", key));
+      setWhitelistMap((prev) => {
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      });
+      toast.success("Email removed from whitelist");
+    } catch (e) {
+      toast.error("Failed to remove email");
+    }
+  };
 
   const PAGE_STATUS_COLORS: Record<string, string> = {
     pending: "bg-[#FF9F1C]/15 text-[#FF9F1C]",
@@ -263,7 +310,7 @@ export default function AdminPage() {
               onClick={() => {
                 setTab(t.id);
                 if (t.id === "costs" && !costReport) fetchCosts();
-                if (t.id === "tasks") fetchActiveTasks();
+                if (t.id === "whitelist") fetchWhitelistData();
               }}
               className={`rounded-full px-5 py-2.5 text-sm font-semibold transition-all ${
                 tab === t.id
@@ -338,181 +385,142 @@ export default function AdminPage() {
         )}
 
         {/* Tasks Tab */}
-        {tab === "tasks" && (
-          <div data-testid="admin-tasks">
-            <div className="flex items-center justify-between mb-4">
-              <p className="text-sm text-[#1E1B4B]/50">{activeStories.length} active stories</p>
-              <Button
-                variant="outline"
-                onClick={fetchActiveTasks}
-                disabled={loadingTasks}
-                className="rounded-full border-[#F3E8FF]"
-              >
-                <RefreshCw className={`w-4 h-4 mr-2 ${loadingTasks ? "animate-spin" : ""}`} strokeWidth={2} />
-                Refresh
-              </Button>
+        {tab === "whitelist" && (
+          <div data-testid="admin-whitelist">
+            <Card className="rounded-2xl border-2 border-[#F3E8FF] mb-4">
+              <CardContent className="p-4">
+                <p className="text-sm font-semibold text-[#1E1B4B] mb-2" style={{ fontFamily: "Fredoka" }}>
+                  Add Email To Whitelist
+                </p>
+                <div className="flex items-center gap-2">
+                  <Input
+                    value={whitelistEmail}
+                    onChange={(e) => setWhitelistEmail(e.target.value)}
+                    placeholder="name@example.com"
+                    className="rounded-full border-[#F3E8FF]"
+                  />
+                  <Button
+                    onClick={handleAddWhitelistEmail}
+                    disabled={addingWhitelistEmail}
+                    className="rounded-full bg-[#2A9D8F] hover:bg-[#248679] text-white"
+                  >
+                    {addingWhitelistEmail ? "Adding…" : "Add"}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+              <div>
+                <p className="text-sm text-[#1E1B4B]/50">
+                  Beta users who can create child profiles and stories
+                </p>
+                <p className="text-xs text-[#1E1B4B]/40 mt-0.5">
+                  Whitelisted: {Object.keys(whitelistMap).length} / {allUsers.length}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <Input
+                  value={whitelistSearch}
+                  onChange={(e) => setWhitelistSearch(e.target.value)}
+                  placeholder="Search name or email"
+                  className="w-[220px] rounded-full border-[#F3E8FF]"
+                />
+                <Button
+                  variant="outline"
+                  onClick={fetchWhitelistData}
+                  disabled={loadingWhitelist}
+                  className="rounded-full border-[#F3E8FF]"
+                >
+                  <RefreshCw className={`w-4 h-4 mr-2 ${loadingWhitelist ? "animate-spin" : ""}`} strokeWidth={2} />
+                  Refresh
+                </Button>
+              </div>
             </div>
 
-            {loadingTasks && (
+            {loadingWhitelist && (
               <div className="flex items-center justify-center py-12 text-[#1E1B4B]/40">
                 <RefreshCw className="w-5 h-5 animate-spin mr-2" />
-                Loading tasks…
+                Loading whitelist…
               </div>
             )}
 
-            {!loadingTasks && activeStories.length === 0 && (
-              <p className="text-center py-12 text-[#1E1B4B]/40">No active tasks</p>
-            )}
+            {!loadingWhitelist && (
+              <div className="space-y-2">
+                {allUsers
+                  .filter((u: any) => {
+                    const needle = whitelistSearch.trim().toLowerCase();
+                    if (!needle) return true;
+                    return (`${u.name || ""} ${u.email || ""}`).toLowerCase().includes(needle);
+                  })
+                  .map((u: any) => {
+                    const uid = u.uid || u.id;
+                    const emailKey = u.email ? `email:${String(u.email).trim().toLowerCase()}` : "";
+                    const isAdminUser = u.is_admin === true;
+                    const isWhitelisted = isAdminUser || !!whitelistMap[uid] || (!!emailKey && !!whitelistMap[emailKey]);
+                    return (
+                      <Card key={uid} className="rounded-2xl border-2 border-[#F3E8FF]">
+                        <CardContent className="p-4 flex items-center gap-3">
+                          <div className="w-9 h-9 rounded-full bg-[#F3E8FF] flex items-center justify-center text-xs font-bold text-[#3730A3]">
+                            {(u.name?.[0] || u.email?.[0] || "?").toUpperCase()}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-semibold text-[#1E1B4B] truncate">{u.name || "Unnamed user"}</p>
+                            <p className="text-xs text-[#1E1B4B]/40 truncate">{u.email || uid}</p>
+                          </div>
+                          {isAdminUser && (
+                            <Badge className="bg-[#3730A3]/15 text-[#3730A3] border-0 rounded-full px-2.5 py-0.5 text-xs font-semibold">
+                              Admin
+                            </Badge>
+                          )}
+                          {!isAdminUser && isWhitelisted && (
+                            <Badge className="bg-[#2A9D8F]/15 text-[#2A9D8F] border-0 rounded-full px-2.5 py-0.5 text-xs font-semibold">
+                              Whitelisted
+                            </Badge>
+                          )}
+                          {!isAdminUser && !isWhitelisted && (
+                            <Badge className="bg-[#E76F51]/15 text-[#E76F51] border-0 rounded-full px-2.5 py-0.5 text-xs font-semibold">
+                              Blocked
+                            </Badge>
+                          )}
+                          <Switch
+                            checked={isWhitelisted}
+                            disabled={isAdminUser || savingWhitelistUser === uid}
+                            onCheckedChange={(checked) => handleToggleWhitelist(u, checked)}
+                          />
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
 
-            <div className="space-y-3">
-              {activeStories.map((story) => {
-                const isExpanded = expandedStory === story.story_id;
-                const pages: any[] = storyPages[story.story_id] ?? [];
-                const completedCount = pages.filter((p) => p.status === "completed").length;
-                const stuckCount = pages.filter((p) => p.status === "pending" || p.status === "processing").length;
-                const allPagesCompleted = pages.length > 0 && pages.every((p) => p.status === "completed");
-
-                return (
-                  <Card key={story.story_id} className="rounded-2xl border-2 border-[#F3E8FF]">
-                    <CardContent className="p-4">
-                      {/* Story header row */}
-                      <div className="flex items-center gap-3">
-                        <Badge className={`${STORY_STATUS_COLORS[story.status] ?? "bg-[#F3E8FF] text-[#1E1B4B]/50"} rounded-full px-2.5 py-0.5 text-xs font-semibold border-0 flex-shrink-0`}>
-                          {story.status}
-                        </Badge>
+                {Object.entries(whitelistMap)
+                  .filter(([key]) => key.startsWith("email:"))
+                  .map(([key, val]: any) => (
+                    <Card key={key} className="rounded-2xl border-2 border-[#F3E8FF] bg-[#FDFBF7]">
+                      <CardContent className="p-4 flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-full bg-[#2A9D8F]/10 flex items-center justify-center text-xs font-bold text-[#2A9D8F]">
+                          @
+                        </div>
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-semibold text-[#1E1B4B] truncate">
-                            {story.title || story.story_id}
-                          </p>
-                          <p className="text-xs text-[#1E1B4B]/40 font-mono">{story.story_id}</p>
+                          <p className="text-sm font-semibold text-[#1E1B4B] truncate">{val.email || key.replace("email:", "")}</p>
+                          <p className="text-xs text-[#1E1B4B]/40 truncate">Manual email whitelist</p>
                         </div>
-                        <div className="flex items-center gap-2 flex-shrink-0">
-                          {/* PDF retry */}
-                          {allPagesCompleted && story.status !== "completed" && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              disabled={retryingPdf === story.story_id}
-                              onClick={() => handleRetryPdf(story.story_id)}
-                              className="rounded-full border-[#FF9F1C]/30 text-[#FF9F1C] hover:bg-[#FF9F1C]/10 text-xs h-8 gap-1.5"
-                            >
-                              <FileText className="w-3 h-3" strokeWidth={2.5} />
-                              {retryingPdf === story.story_id ? "Queuing…" : "Retry PDF"}
-                            </Button>
-                          )}
-                          {/* Expand button */}
-                          <button
-                            onClick={() => handleExpandStory(story.story_id)}
-                            className="p-1.5 rounded-xl text-[#1E1B4B]/40 hover:text-[#1E1B4B] hover:bg-[#F3E8FF] transition-colors"
-                          >
-                            {isExpanded ? <ChevronUp className="w-4 h-4" strokeWidth={2.5} /> : <ChevronDown className="w-4 h-4" strokeWidth={2.5} />}
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* Expanded pages section */}
-                      {isExpanded && (
-                        <div className="mt-4 border-t border-[#F3E8FF] pt-4">
-                          {loadingPages === story.story_id ? (
-                            <div className="flex items-center gap-2 text-[#1E1B4B]/40 text-sm py-2">
-                              <RefreshCw className="w-4 h-4 animate-spin" />
-                              Loading pages…
-                            </div>
-                          ) : pages.length === 0 ? (
-                            <p className="text-sm text-[#1E1B4B]/40 py-2">No pages found in subcollection yet</p>
-                          ) : (
-                            <>
-                              <div className="flex items-center justify-between mb-3">
-                                <p className="text-xs text-[#1E1B4B]/50 font-semibold uppercase tracking-wider">
-                                  {completedCount}/{pages.length} pages done
-                                  {stuckCount > 0 && ` · ${stuckCount} stuck`}
-                                </p>
-                                <button
-                                  onClick={() => loadStoryPages(story.story_id)}
-                                  className="text-xs text-[#3730A3]/60 hover:text-[#3730A3] flex items-center gap-1"
-                                >
-                                  <RefreshCw className="w-3 h-3" strokeWidth={2.5} />
-                                  Reload
-                                </button>
-                              </div>
-                              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
-                                {pages.map((page) => {
-                                  const isStuck = page.status === "pending" || page.status === "processing";
-                                  const isFailed = page.status === "failed";
-                                  const canRetry = isStuck || isFailed;
-                                  const label = page.page === 0 ? "Cover" : page.page === story.page_count - 1 ? "Back" : `Pg ${page.page}`;
-                                  return (
-                                    <div
-                                      key={page.page_doc_id}
-                                      className="flex items-center justify-between gap-2 rounded-xl border border-[#F3E8FF] bg-[#FDFBF7] px-3 py-2"
-                                    >
-                                      <div className="flex items-center gap-2 min-w-0">
-                                        <Image className="w-3.5 h-3.5 text-[#1E1B4B]/30 flex-shrink-0" strokeWidth={2} />
-                                        <span className="text-xs font-medium text-[#1E1B4B] truncate">{label}</span>
-                                        <Badge className={`${PAGE_STATUS_COLORS[page.status] ?? "bg-[#F3E8FF] text-[#1E1B4B]/40"} rounded-full px-2 py-0 text-[10px] font-semibold border-0 flex-shrink-0`}>
-                                          {page.status ?? "unknown"}
-                                        </Badge>
-                                      </div>
-                                      {canRetry && (
-                                        <button
-                                          disabled={retryingPage === page.page_doc_id}
-                                          onClick={() => handleRetryPage(story.story_id, page.page_doc_id)}
-                                          className="flex-shrink-0 p-1 rounded-lg text-[#E76F51] hover:bg-[#E76F51]/10 disabled:opacity-50 transition-colors"
-                                          title="Retry this page"
-                                        >
-                                          <RotateCcw className={`w-3.5 h-3.5 ${retryingPage === page.page_doc_id ? "animate-spin" : ""}`} strokeWidth={2.5} />
-                                        </button>
-                                      )}
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            </>
-                          )}
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        {/* Jobs Tab */}
-        {tab === "jobs" && (
-          <div data-testid="admin-jobs">
-            <div className="flex items-center justify-between mb-4">
-              <p className="text-sm text-[#1E1B4B]/50">{jobs.length} total jobs</p>
-              <Button
-                data-testid="btn-clear-stale"
-                onClick={handleClearStale}
-                variant="outline"
-                className="rounded-full border-[#E76F51]/30 text-[#E76F51] hover:bg-[#E76F51]/10"
-              >
-                <Trash2 className="w-4 h-4 mr-2" strokeWidth={2} />
-                Clear All Stale Jobs
-              </Button>
-            </div>
-            <div className="space-y-2">
-              {jobs.length === 0 ? (
-                <p className="text-center py-12 text-[#1E1B4B]/40">No jobs</p>
-              ) : (
-                jobs.map((job, i) => (
-                  <div key={i} className="flex items-center gap-3 p-3 rounded-xl bg-white border-2 border-[#F3E8FF]">
-                    <Badge className={`${JOB_STATUS_COLORS[job.status] || ""} rounded-full px-2.5 py-0.5 text-xs font-semibold border-0`}>
-                      {job.status}
-                    </Badge>
-                    <span className="text-sm text-[#1E1B4B] font-mono">{job.payload?.story_id?.slice(0, 20)}</span>
-                    <span className="text-xs text-[#1E1B4B]/40">{job.job_type}</span>
-                    <span className="flex-1" />
-                    <span className="text-xs text-[#1E1B4B]/30">
-                      {job.created_at ? new Date(job.created_at).toLocaleString("en-IN", { dateStyle: "short", timeStyle: "short" }) : ""}
-                    </span>
-                  </div>
-                ))
-              )}
-            </div>
+                        <Badge className="bg-[#2A9D8F]/15 text-[#2A9D8F] border-0 rounded-full px-2.5 py-0.5 text-xs font-semibold">
+                          Whitelisted
+                        </Badge>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleRemoveWhitelistEmail(key)}
+                          className="rounded-full text-[#E76F51] hover:bg-[#E76F51]/10"
+                        >
+                          <Trash2 className="w-4 h-4" strokeWidth={2} />
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  ))}
+              </div>
+            )}
           </div>
         )}
 

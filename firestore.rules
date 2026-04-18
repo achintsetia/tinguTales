@@ -1,9 +1,15 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    function isAdmin() {
+      return request.auth != null
+        && get(/databases/$(database)/documents/user_profile/$(request.auth.uid)).data.is_admin == true;
+    }
+
     // Each user can read and write only their own profile
     match /user_profile/{userId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+      allow read: if request.auth != null && (request.auth.uid == userId || isAdmin());
+      allow write: if request.auth != null && request.auth.uid == userId;
     }
 
     // Child profiles — users can only access their own
@@ -17,8 +23,7 @@ service cloud.firestore {
     // Model configs — any authenticated user can read, only admins can write
     match /models/{modelId} {
       allow read: if request.auth != null;
-      allow write: if request.auth != null
-        && get(/databases/$(database)/documents/user_profile/$(request.auth.uid)).data.is_admin == true;
+      allow write: if isAdmin();
     }
 
     // Transliteration cache — any authenticated user can read; writes via Cloud Functions only
@@ -27,9 +32,22 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Beta whitelist — users can read their own UID entry or their email-based entry.
+    // Email entries use doc id format: email:<lowercase_email>
+    match /beta_whitelist/{entryId} {
+      allow read: if request.auth != null && (
+        request.auth.uid == entryId ||
+        (request.auth.token.email != null
+          && entryId == ("email:" + request.auth.token.email.lower())) ||
+        isAdmin()
+      );
+      allow write: if isAdmin();
+    }
+
     // Stories — users can read/delete their own; partial client updates allowed for wizard fields
     match /stories/{storyId} {
-      allow read, delete: if request.auth != null && resource.data.user_id == request.auth.uid;
+      allow read: if request.auth != null && (resource.data.user_id == request.auth.uid || isAdmin());
+      allow delete: if request.auth != null && resource.data.user_id == request.auth.uid;
       // Allow the owner to update only safe wizard metadata fields (no status or draft_pages tampering)
       allow update: if request.auth != null
         && resource.data.user_id == request.auth.uid
@@ -43,6 +61,27 @@ service cloud.firestore {
           && get(/databases/$(database)/documents/stories/$(storyId)).data.user_id == request.auth.uid;
         allow write: if false;
       }
+    }
+
+    // Payments — owner can read their own; admins can read all
+    match /payments/{paymentId} {
+      allow read: if request.auth != null && (
+        resource.data.user_id == request.auth.uid ||
+        isAdmin()
+      );
+      allow write: if false;
+    }
+
+    // Public settings — any signed-in user can read, only admins can write
+    match /settings/{settingId} {
+      allow read: if request.auth != null;
+      allow write: if isAdmin();
+    }
+
+    // Pricing config — any signed-in user can read, only admins can write
+    match /pricing/{settingId} {
+      allow read: if request.auth != null;
+      allow write: if isAdmin();
     }
 
     // All other collections are locked down by default

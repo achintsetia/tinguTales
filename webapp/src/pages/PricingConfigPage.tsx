@@ -14,18 +14,11 @@ interface PricingTier {
   enabled: boolean;
 }
 
-const DEFAULT_TIERS: PricingTier[] = [
-  { pages: 8,  price: 99,  enabled: true },
-  { pages: 12, price: 149, enabled: true },
-  { pages: 16, price: 199, enabled: true },
-  { pages: 20, price: 249, enabled: true },
-];
-
 export default function PricingConfigPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
 
-  const [tiers, setTiers] = useState<PricingTier[]>(DEFAULT_TIERS);
+  const [tiers, setTiers] = useState<PricingTier[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -44,13 +37,34 @@ export default function PricingConfigPage() {
   const loadPricing = async () => {
     setLoading(true);
     try {
-      const snap = await getDoc(doc(db, "settings", "pricing"));
+      const snap = await getDoc(doc(db, "pricing", "public"));
       if (snap.exists()) {
         const data = snap.data();
-        if (Array.isArray(data.tiers) && data.tiers.length > 0) {
-          setTiers(data.tiers as PricingTier[]);
+        if (Array.isArray(data.tiers)) {
+          setTiers((data.tiers as PricingTier[]).sort((a, b) => a.pages - b.pages));
+          return;
         }
       }
+
+      // One-time fallback: migrate legacy settings/pricing doc to pricing/public.
+      const legacySnap = await getDoc(doc(db, "settings", "pricing"));
+      if (legacySnap.exists()) {
+        const legacyData = legacySnap.data();
+        if (Array.isArray(legacyData.tiers)) {
+          const sorted = (legacyData.tiers as PricingTier[]).sort((a, b) => a.pages - b.pages);
+          setTiers(sorted);
+          await setDoc(doc(db, "pricing", "public"), { tiers: sorted }, { merge: true });
+          return;
+        }
+      }
+
+      // If pricing/public doesn't exist yet, create it so the collection is visible in Firestore.
+      await setDoc(doc(db, "pricing", "public"), {
+        tiers: [],
+        payments_enabled: false,
+      }, { merge: true });
+
+      setTiers([]);
     } catch {
       toast.error("Failed to load pricing config");
     } finally {
@@ -69,10 +83,14 @@ export default function PricingConfigPage() {
       toast.error("All prices must be greater than 0");
       return;
     }
+    if (tiers.length === 0) {
+      toast.error("Add at least one pricing tier");
+      return;
+    }
     setSaving(true);
     try {
       const sorted = [...tiers].sort((a, b) => a.pages - b.pages);
-      await setDoc(doc(db, "settings", "pricing"), { tiers: sorted }, { merge: false });
+      await setDoc(doc(db, "pricing", "public"), { tiers: sorted }, { merge: true });
       setTiers(sorted);
       toast.success("Pricing saved");
     } catch {
