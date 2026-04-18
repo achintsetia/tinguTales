@@ -13,8 +13,13 @@ import {
   BookOpen, ArrowLeft, ArrowRight, Check, Upload, Plus, Sparkles,
   User, Globe, Heart, Rocket, TreePine, Fish, Music, Palette, Star,
   Plane, Train, Crown, Zap, ChefHat, Gamepad2, Cat, Trash2, Shuffle,
-  Flame, Sun, Mountain, Feather, Tent, Lamp, BookHeart, Drama
+  Flame, Sun, Mountain, Feather, Tent, Lamp, BookHeart, Drama,
+  AlertCircle, RotateCcw,
 } from "lucide-react";
+import { db, storage, functions } from "../firebase";
+import { collection, query, where, onSnapshot, deleteDoc, doc as firestoreDoc, updateDoc } from "firebase/firestore";
+import { ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
+import { httpsCallable } from "firebase/functions";
 
 const LANGUAGES = [
   { code: "en", name: "English", native: "English", font: "" },
@@ -24,6 +29,8 @@ const LANGUAGES = [
   { code: "te", name: "Telugu", native: "\u0c24\u0c46\u0c32\u0c41\u0c17\u0c41", font: "font-telugu" },
   { code: "mr", name: "Marathi", native: "\u092e\u0930\u093e\u0920\u0940", font: "font-marathi" },
   { code: "bn", name: "Bengali", native: "\u09ac\u09be\u0982\u09b2\u09be", font: "font-bengali" },
+  { code: "gu", name: "Gujarati", native: "\u0a97\u0ac1\u0a9c\u0ab0\u0abe\u0aa4\u0ac0", font: "font-gujarati" },
+  { code: "ml", name: "Malayalam", native: "\u0d2e\u0d32\u0d2f\u0d3e\u0d33\u0d02", font: "font-malayalam" },
 ];
 
 const INTEREST_OPTIONS = [
@@ -220,12 +227,56 @@ export default function CreateStory() {
   const [newProfile, setNewProfile] = useState({ name: "", age: "", gender: "" });
   const [photoFile, setPhotoFile] = useState(null);
   const [loadingProfiles, setLoadingProfiles] = useState(true);
-  const [generatingAvatarFor, setGeneratingAvatarFor] = useState(null);
+  const [savingProfile, setSavingProfile] = useState(false);
   const [photoPreview, setPhotoPreview] = useState(null);
   const [paymentsEnabled, setPaymentsEnabled] = useState(true);
+  const [deleteUploadPrompt, setDeleteUploadPrompt] = useState<{
+    profileId: string; photoPath: string; profileName: string;
+  } | null>(null);
+  const [deletingUpload, setDeletingUpload] = useState(false);
+  // Track previous avatar statuses to detect completed transitions
+  const prevStatusesRef = useRef<Record<string, string>>({});
+
+  // Subscribe to child profiles in real-time via Firestore
+  useEffect(() => {
+    if (!user?.id) return;
+    const q = query(
+      collection(db, "child_profiles"),
+      where("user_id", "==", user.id)
+    );
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const data = snapshot.docs.map((d) => d.data());
+      setProfiles(data);
+      setLoadingProfiles(false);
+      setSelectedProfile((prev) => {
+        if (!prev) return prev;
+        const updated = data.find((p) => p.profile_id === prev.profile_id);
+        return updated ?? prev;
+      });
+      // Detect transitions to "completed" — prompt to delete the upload
+      data.forEach((p) => {
+        const prev = prevStatusesRef.current[p.profile_id];
+        const isNewlyCompleted =
+          (prev === "pending" || prev === "generating") &&
+          p.avatar_status === "completed" &&
+          p.photo_url;
+        if (isNewlyCompleted) {
+          setDeleteUploadPrompt({
+            profileId: p.profile_id,
+            photoPath: p.photo_url,
+            profileName: p.name,
+          });
+        }
+        prevStatusesRef.current[p.profile_id] = p.avatar_status;
+      });
+    }, (err) => {
+      console.error("Profiles subscription error:", err);
+      setLoadingProfiles(false);
+    });
+    return () => unsubscribe();
+  }, [user?.id]);
 
   useEffect(() => {
-    fetchProfiles();
     // Check if payments are enabled
     axios.get(`${API}/settings/public`).then(res => {
       setPaymentsEnabled(res.data.payments_enabled);
@@ -330,77 +381,60 @@ export default function CreateStory() {
   // Clear wizard state on successful approve (story creation started)
   const clearWizardState = () => localStorage.removeItem(WIZARD_KEY);
 
-  const fetchProfiles = async () => {
-    try {
-      const res = await axios.get(`${API}/profiles`);
-      setProfiles(res.data);
-    } catch (e) {
-      console.error("Fetch profiles error:", e);
-    } finally {
-      setLoadingProfiles(false);
-    }
-  };
-
   const handleCreateProfile = async () => {
     if (!newProfile.name || !newProfile.age) {
       toast.error("Please enter name and age");
       return;
     }
-    const formData = new FormData();
-    formData.append("name", newProfile.name);
-    formData.append("age", parseInt(newProfile.age));
-    formData.append("gender", newProfile.gender);
-    if (photoFile) formData.append("photo", photoFile);
-
+    setSavingProfile(true);
     try {
-      const res = await axios.post(`${API}/profiles`, formData, {
-        headers: { "Content-Type": "multipart/form-data" },
+      let photoStoragePath = "";
+      let photoDownloadUrl = "";
+      if (photoFile && user?.id) {
+        const ext = photoFile.name.split(".").pop() ?? "jpg";
+        const fileName = `${Date.now()}.${ext}`;
+        const fileRef = storageRef(storage, `${user.id}/uploads/${fileName}`);
+        await uploadBytes(fileRef, photoFile);
+        photoDownloadUrl = await getDownloadURL(fileRef);
+        photoStoragePath = fileRef.fullPath;
+      }
+
+      const createProfileFn = httpsCallable(functions, "createChildProfile");
+      const result = await createProfileFn({
+        name: newProfile.name,
+        age: parseInt(newProfile.age),
+        gender: newProfile.gender,
+        photo_storage_path: photoStoragePath,
+        photo_download_url: photoDownloadUrl,
       });
-      const createdProfile = res.data;
-      setProfiles((prev) => [...prev, createdProfile]);
-      setSelectedProfile(createdProfile);
+
+      // onSnapshot will update the profiles list automatically;
+      // sync selectedProfile immediately so step 2 transitions work
+      const created = result.data as Record<string, unknown>;
+      setSelectedProfile({ ...created, photo_download_url: photoDownloadUrl });
       setShowNewProfile(false);
       setNewProfile({ name: "", age: "", gender: "" });
       setPhotoFile(null);
       setPhotoPreview(null);
       toast.success("Profile created!");
-
-      // If photo was uploaded, poll for avatar generation
-      if (createdProfile.photo_url) {
-        setGeneratingAvatarFor(createdProfile.profile_id);
-        pollForAvatar(createdProfile.profile_id);
-      }
     } catch (e) {
       toast.error("Failed to create profile");
+      console.error(e);
+    } finally {
+      setSavingProfile(false);
     }
   };
 
-  const pollForAvatar = (profileId) => {
-    let attempts = 0;
-    const maxAttempts = 20; // poll for ~60 seconds
-    const interval = setInterval(async () => {
-      attempts++;
-      try {
-        const res = await axios.get(`${API}/profiles/${profileId}`);
-        if (res.data.avatar_url) {
-          clearInterval(interval);
-          setGeneratingAvatarFor(null);
-          setProfiles((prev) =>
-            prev.map((p) => (p.profile_id === profileId ? { ...p, avatar_url: res.data.avatar_url } : p))
-          );
-          setSelectedProfile((prev) =>
-            prev?.profile_id === profileId ? { ...prev, avatar_url: res.data.avatar_url } : prev
-          );
-          toast.success("Avatar generated!");
-        }
-      } catch (e) {
-        // ignore polling errors
-      }
-      if (attempts >= maxAttempts) {
-        clearInterval(interval);
-        setGeneratingAvatarFor(null);
-      }
-    }, 3000);
+  const handleRetryAvatar = async (e: React.MouseEvent, profileId: string) => {
+    e.stopPropagation();
+    try {
+      const retryFn = httpsCallable(functions, "retryAvatarGeneration");
+      await retryFn({ profile_id: profileId });
+      toast.info("Retrying avatar generation...");
+    } catch (e) {
+      toast.error("Failed to start retry");
+      console.error(e);
+    }
   };
 
   const handlePhotoChange = (e) => {
@@ -416,14 +450,39 @@ export default function CreateStory() {
   const handleDeletePhoto = async (e, profileId) => {
     e.stopPropagation();
     try {
-      await axios.delete(`${API}/profiles/${profileId}/photo`);
-      setProfiles((prev) => prev.filter((p) => p.profile_id !== profileId));
+      const profile = profiles.find((p) => p.profile_id === profileId);
+      // Delete the uploaded photo from Storage (client has delete permission for uploads/)
+      if (profile?.photo_url) {
+        try { await deleteObject(storageRef(storage, profile.photo_url)); } catch { /* ignore */ }
+      }
+      // Delete the Firestore document (security rules allow owner to delete)
+      await deleteDoc(firestoreDoc(db, "child_profiles", profileId));
       if (selectedProfile?.profile_id === profileId) {
         setSelectedProfile(null);
       }
       toast.success("Profile deleted");
     } catch (e) {
       toast.error("Failed to delete profile");
+    }
+  };
+
+  const handleConfirmDeleteUpload = async (confirm: boolean) => {
+    if (!deleteUploadPrompt) return;
+    const { profileId, photoPath } = deleteUploadPrompt;
+    setDeleteUploadPrompt(null);
+    if (!confirm) return;
+    setDeletingUpload(true);
+    try {
+      await deleteObject(storageRef(storage, photoPath));
+      await updateDoc(firestoreDoc(db, "child_profiles", profileId), {
+        photo_url: "",
+        photo_download_url: "",
+      });
+      toast.success("Original photo deleted to save storage space.");
+    } catch {
+      toast.error("Could not delete the original photo.");
+    } finally {
+      setDeletingUpload(false);
     }
   };
 
@@ -615,6 +674,37 @@ export default function CreateStory() {
 
   return (
     <div className="min-h-screen bg-[#FDFBF7]">
+      {/* Delete-upload confirmation dialog */}
+      <Dialog open={!!deleteUploadPrompt} onOpenChange={(open) => { if (!open) setDeleteUploadPrompt(null); }}>
+        <DialogContent className="rounded-3xl border-2 border-[#F3E8FF] max-w-sm">
+          <DialogHeader>
+            <DialogTitle style={{ fontFamily: "Fredoka" }} className="text-[#1E1B4B] text-xl">
+              Avatar ready! 🎉
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-[#1E1B4B]/70 mt-1">
+            {deleteUploadPrompt?.profileName}'s cartoon avatar has been created.
+            Would you like to delete the original uploaded photo to save storage space?
+          </p>
+          <div className="flex gap-3 mt-4">
+            <Button
+              variant="outline"
+              className="flex-1 rounded-full border-[#F3E8FF]"
+              onClick={() => handleConfirmDeleteUpload(false)}
+            >
+              Keep Photo
+            </Button>
+            <Button
+              className="flex-1 rounded-full bg-[#E76F51] hover:bg-[#E76F51]/80 text-white"
+              disabled={deletingUpload}
+              onClick={() => handleConfirmDeleteUpload(true)}
+            >
+              <Trash2 className="w-4 h-4 mr-1.5" strokeWidth={2} />
+              {deletingUpload ? "Deleting..." : "Delete Upload"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
       {/* Header */}
       <nav className="sticky top-0 z-50 backdrop-blur-xl bg-[#FDFBF7]/80 border-b border-[#F3E8FF]">
         <div className="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between">
@@ -713,27 +803,33 @@ export default function CreateStory() {
                 >
                   <CardContent className="p-6 flex items-center gap-4">
                     <div className="w-16 h-16 rounded-2xl bg-[#3730A3]/10 flex items-center justify-center flex-shrink-0 overflow-hidden relative">
-                      {generatingAvatarFor === p.profile_id ? (
-                        <div className="w-full h-full flex items-center justify-center bg-[#FF9F1C]/10">
+                      {(p.avatar_status === "pending" || p.avatar_status === "generating") ? (
+                        <div className="w-full h-full flex flex-col items-center justify-center bg-[#FF9F1C]/10 gap-1">
                           <Sparkles className="w-7 h-7 text-[#FF9F1C] animate-spin" strokeWidth={2} />
+                          <span className="text-[9px] text-[#FF9F1C] font-semibold">Creating...</span>
                         </div>
-                      ) : p.avatar_url ? (
+                      ) : p.avatar_status === "failed" ? (
+                        <div className="w-full h-full flex flex-col items-center justify-center bg-[#E76F51]/10 gap-1">
+                          <AlertCircle className="w-6 h-6 text-[#E76F51]" strokeWidth={2} />
+                          <span className="text-[9px] text-[#E76F51] font-semibold">Failed</span>
+                        </div>
+                      ) : p.avatar_jpeg_url ? (
                         <BlurImage
-                          src={`${API}/files/${p.avatar_url}`}
+                          src={p.avatar_jpeg_url}
                           alt={`${p.name}'s avatar`}
                           data-testid={`avatar-img-${p.profile_id}`}
                           className="w-full h-full object-cover rounded-2xl"
                         />
-                      ) : p.photo_url ? (
+                      ) : (p.photo_download_url || p.photo_url) ? (
                         <BlurImage
-                          src={`${API}/files/${p.photo_url}`}
+                          src={p.photo_download_url || `${API}/files/${p.photo_url}`}
                           alt={p.name}
                           className="w-full h-full object-cover rounded-2xl"
                         />
                       ) : (
                         <User className="w-7 h-7 text-[#3730A3]" strokeWidth={2} />
                       )}
-                      {p.avatar_url && (
+                      {p.avatar_status === "completed" && (
                         <div className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-[#2A9D8F] flex items-center justify-center border-2 border-white">
                           <Sparkles className="w-3 h-3 text-white" strokeWidth={3} />
                         </div>
@@ -742,13 +838,25 @@ export default function CreateStory() {
                     <div className="flex-1 min-w-0">
                       <h3 className="font-medium text-[#1E1B4B] text-lg" style={{ fontFamily: "Fredoka" }}>{p.name}</h3>
                       <p className="text-sm text-[#1E1B4B]/50">
-                        {generatingAvatarFor === p.profile_id
+                        {p.avatar_status === "pending" || p.avatar_status === "generating"
                           ? "Creating avatar..."
+                          : p.avatar_status === "failed"
+                          ? "Avatar failed — tap retry"
                           : `Age ${p.age}${p.gender ? ` \u00b7 ${p.gender}` : ""}`}
                       </p>
                     </div>
                     <div className="flex items-center gap-2 ml-auto">
-                      {generatingAvatarFor !== p.profile_id && (
+                      {p.avatar_status === "failed" && p.photo_url && (
+                        <button
+                          data-testid={`btn-retry-avatar-${p.profile_id}`}
+                          onClick={(e) => handleRetryAvatar(e, p.profile_id)}
+                          className="p-1.5 rounded-xl text-[#FF9F1C] hover:bg-[#FF9F1C]/10 transition-colors"
+                          title="Retry avatar generation"
+                        >
+                          <RotateCcw className="w-4 h-4" strokeWidth={2} />
+                        </button>
+                      )}
+                      {p.avatar_status !== "pending" && p.avatar_status !== "generating" && (
                         <button
                           data-testid={`btn-delete-photo-${p.profile_id}`}
                           onClick={(e) => handleDeletePhoto(e, p.profile_id)}
@@ -883,9 +991,10 @@ export default function CreateStory() {
                   <Button
                     data-testid="btn-save-profile"
                     onClick={handleCreateProfile}
+                    disabled={savingProfile}
                     className="w-full rounded-full bg-[#FF9F1C] hover:bg-[#E88A12] text-[#1E1B4B] font-bold min-h-[48px]"
                   >
-                    Save Profile
+                    {savingProfile ? "Saving..." : "Save Profile"}
                   </Button>
                 </div>
               </DialogContent>
@@ -898,11 +1007,11 @@ export default function CreateStory() {
           <div className="animate-fade-in-up" data-testid="step-select-language">
             <div className="text-center mb-8">
               {/* Hero avatar */}
-              {(selectedProfile?.avatar_jpeg_url || selectedProfile?.avatar_url) && (
+              {selectedProfile?.avatar_jpeg_url && (
                 <div className="flex flex-col items-center mb-6">
                   <div className="w-40 h-40 rounded-full overflow-hidden border-4 border-[#FF9F1C] shadow-xl">
                     <BlurImage
-                      src={`${API}/files/${selectedProfile.avatar_jpeg_url || selectedProfile.avatar_url}`}
+                      src={selectedProfile.avatar_jpeg_url}
                       alt={selectedProfile.name}
                       className="w-full h-full object-cover"
                     />
@@ -918,7 +1027,7 @@ export default function CreateStory() {
               </h2>
               <p className="text-[#1E1B4B]/60 mt-2">The story will be written natively in this language</p>
             </div>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+            <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
               {LANGUAGES.map((lang) => (
                 <Card
                   key={lang.code}
@@ -930,13 +1039,13 @@ export default function CreateStory() {
                   }`}
                   onClick={() => setSelectedLang(lang)}
                 >
-                  <CardContent className="p-5 text-center">
-                    <div className={`text-2xl mb-2 ${lang.font}`} style={{ fontFamily: lang.font ? undefined : "Fredoka" }}>
+                  <CardContent className="p-3 text-center">
+                    <div className={`text-xl mb-1 ${lang.font}`} style={{ fontFamily: lang.font ? undefined : "Fredoka" }}>
                       {lang.native}
                     </div>
-                    <p className="text-sm text-[#1E1B4B]/50">{lang.name}</p>
+                    <p className="text-xs text-[#1E1B4B]/50">{lang.name}</p>
                     {selectedLang?.code === lang.code && (
-                      <Check className="w-5 h-5 text-[#FF9F1C] mx-auto mt-2" strokeWidth={3} />
+                      <Check className="w-4 h-4 text-[#FF9F1C] mx-auto mt-1" strokeWidth={3} />
                     )}
                   </CardContent>
                 </Card>

@@ -8,6 +8,7 @@ import Dashboard from "./pages/Dashboard";
 import CreateStory from "./pages/CreateStory";
 import StoryViewer from "./pages/StoryViewer";
 import AdminPage from "./pages/AdminPage";
+import ModelConfigPage from "./pages/ModelConfigPage";
 import PaymentHistory from "./pages/PaymentHistory";
 
 function AppRouter() {
@@ -43,6 +44,14 @@ function AppRouter() {
         element={
           <ProtectedRoute>
             <AdminPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/models"
+        element={
+          <ProtectedRoute>
+            <ModelConfigPage />
           </ProtectedRoute>
         }
       />

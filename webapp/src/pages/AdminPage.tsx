@@ -9,7 +9,7 @@ import { Badge } from "../components/ui/badge";
 import { Switch } from "../components/ui/switch";
 import {
   ArrowLeft, Trash2, RefreshCw, DollarSign, Users, BookOpen,
-  Activity, AlertCircle, CheckCircle, Clock, Sparkles, Undo2
+  Activity, AlertCircle, CheckCircle, Clock, Sparkles, Undo2, Bot
 } from "lucide-react";
 
 export default function AdminPage() {
@@ -142,6 +142,13 @@ export default function AdminPage() {
               {t.label}
             </button>
           ))}
+          <button
+            onClick={() => navigate("/admin/models")}
+            className="rounded-full px-5 py-2.5 text-sm font-semibold transition-all bg-white text-[#3730A3]/70 border-2 border-[#F3E8FF] hover:border-[#3730A3]/30 flex items-center gap-1.5"
+          >
+            <Bot className="w-4 h-4" strokeWidth={2.5} />
+            Models
+          </button>
         </div>
 
         {/* Overview Tab */}
