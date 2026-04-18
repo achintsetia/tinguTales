@@ -123,6 +123,8 @@ interface StoryPage {
 interface StoryOutline {
   title: string;
   titleEnglish: string;
+  subtitle?: string;
+  subtitleEnglish?: string;
   synopsis: string;
   moral: string;
   lessonPhrase?: string;
@@ -134,6 +136,8 @@ interface PageText {
   text: string;
   avatar_url?: string;
   page_type?: string;
+  cover_title?: string;
+  cover_subtitle?: string;
 }
 
 interface GenerateStoryDraftRequest {
@@ -234,8 +238,8 @@ async function planStory(
   templateDesc = ""
 ): Promise<{outline: StoryOutline; tokens: number}> {
   const writingGuide = ageWritingGuide(childAge);
-  // Page layout: 0=cover, 1..N-3=story, N-2=back_cover, N-1=branding
-  const storyPageCount = numPages - 3;
+  // Page layout: 0=cover, 1..N-2=story, N-1=back_cover+branding
+  const storyPageCount = numPages - 2;
   const beats = storyBeats(storyPageCount);
 
   const incidentInstruction = customIncident ?
@@ -256,8 +260,8 @@ async function planStory(
   const pagesJson = [
     "    {\"page\": 0, \"type\": \"cover\", \"description\": \"What the cover shows\"}",
     ...beats.map((beat, i) => `    {"page": ${i + 1}, "type": "story", "description": "${beat}"}`),
-    `    {"page": ${numPages - 2}, "type": "back_cover", "description": "Warm closing message with lesson summary"}`,
-    `    {"page": ${numPages - 1}, "type": "branding", "description": "TinguTales.com branding page"}`,
+    `    {"page": ${numPages - 1}, "type": "back_cover", "description": "Back cover: warm closing message with lesson summary and TinguTales.com branding"}`,
+
   ].join(",\n");
 
   const prompt =
@@ -274,9 +278,8 @@ async function planStory(
     "The lesson must be SHOWN through the child's actions — never stated as a lecture.\n\n" +
     `Create a story with exactly ${numPages} pages:\n` +
     `- Page 0: FRONT COVER — title prominently featuring ${childName}'s name and a subtitle hinting at the adventure\n` +
-    `- Pages 1-${numPages - 3}: Story pages (${beats.join(", ")}) — the learning arc builds gradually across these pages\n` +
-    `- Page ${numPages - 2}: BACK COVER — a warm closing message summarising what ${childName} learned today\n` +
-    `- Page ${numPages - 1}: BRANDING — always "TinguTales.com" branding, fixed text (see rules below)\n\n` +
+    `- Pages 1-${numPages - 2}: Story pages (${beats.join(", ")}) — the learning arc builds gradually across these pages\n` +
+    `- Page ${numPages - 1}: BACK COVER + BRANDING — warm English closing message with lesson summary, then TinguTales.com branding on its own line\n\n` +
     "The story must:\n" +
     `- Feature ${childName} as the brave, curious main character\n` +
     `- Show ${childName} NOT knowing the lesson → encountering a challenge → learning by doing\n` +
@@ -287,6 +290,8 @@ async function planStory(
     "{\n" +
     `  "title": "Story title in ${languageName}",\n` +
     "  \"titleEnglish\": \"English translation of title\",\n" +
+    `  "subtitle": "Short subtitle in ${languageName} hinting at the adventure (5-8 words)",\n` +
+    "  \"subtitleEnglish\": \"English translation of subtitle\",\n" +
     "  \"synopsis\": \"Brief 2-line synopsis in English\",\n" +
     `  "moral": "One concrete lesson ${childName} will take away (e.g. 'Sharing makes everyone happy')",\n` +
     `  "lessonPhrase": "One short phrase (5-8 words) for the back cover, e.g. '${childName} learned that sharing is caring'",\n` +
@@ -320,7 +325,7 @@ async function planStory(
         moral: "Be brave and kind",
         pages: Array.from({length: numPages}, (_, i) => ({
           page: i,
-          type: i === 0 ? "cover" : i === numPages - 1 ? "branding" : i === numPages - 2 ? "back_cover" : "story",
+          type: i === 0 ? "cover" : i === numPages - 1 ? "back_cover" : "story",
           description: `Page ${i}`,
         })),
       },
@@ -340,6 +345,7 @@ async function planStory(
  * @param {StoryOutline} outline - Story outline from Agent 2.
  * @param {string} languageName - Target language display name.
  * @param {string} childName - The child's name.
+ * @param {string} childEnglishName - The child's name in English script.
  * @param {number} childAge - The child's age.
  * @param {number} numPages - Total page count.
  * @param {string} customIncident - Optional real-life incident to weave in.
@@ -351,6 +357,7 @@ async function writeStory(
   outline: StoryOutline,
   languageName: string,
   childName: string,
+  childEnglishName: string,
   childAge: number,
   numPages: number,
   customIncident: string
@@ -361,10 +368,10 @@ async function writeStory(
     Array.from({length: numPages}, (_, i) => {
       let label: string;
       if (i === 0) label = "Cover text";
-      else if (i === numPages - 2) label = "Back cover text";
-      else if (i === numPages - 1) label = "TinguTales branding (always in English, see rules)";
+      else if (i === numPages - 1) label = "Back cover + TinguTales.com branding (English only)";
       else label = `Page ${i} text`;
-      return `  {"page": ${i}, "text": "${label} in ${i === numPages - 1 ? "English" : languageName}"}`;
+      const pageLanguage = i === numPages - 1 ? "English" : languageName;
+      return `  {"page": ${i}, "text": "${label} in ${pageLanguage}"}`;
     }).join(",\n") +
     "\n]";
 
@@ -393,21 +400,23 @@ async function writeStory(
     "COVER, BACK COVER & BRANDING RULES:\n" +
     "- Page 0 (Front Cover): Title text = story title. Below it, a short tagline (max 8 words) that\n" +
     `  names ${childName} and hints at the adventure. Example: "${childName} and the Magic Garden".\n` +
-    `- Page ${numPages - 2} (Back Cover): Warm, celebratory closing. Start with the lesson phrase:\n` +
-    `  "${lessonPhrase}". Then 1-2 sentences inviting the reader to try the lesson too.\n` +
-    `- Page ${numPages - 1} (Branding): ALWAYS write in English. Creative, magical, child-friendly sentence\n` +
-    "  that mentions TinguTales.com. Examples:\n" +
-    "  \"Every child has a story. Create yours at TinguTales.com ✨\"\n" +
-    `  "This story was made just for ${childName} with love at TinguTales.com 🌟"\n` +
-    "  \"Your next adventure is waiting... TinguTales.com 🚀\"\n" +
-    "  Make it feel magical and personal. Always end with TinguTales.com on its own line.\n\n" +
+    `- Page ${numPages - 1} (Back Cover + Branding): MUST be in English only. Two parts:\n` +
+    `  PART 1 — Back cover: Start with "${lessonPhrase}". Then 1-2 warm sentences inviting the reader\n` +
+    `  to try the lesson too. Include the exact name "${childEnglishName}" at least once.\n` +
+    "  PART 2 — Branding: On a new line, write a creative, magical, child-friendly sentence that\n" +
+    "  mentions TinguTales.com. Examples:\n" +
+    "    \"Every child has a story. Create yours at TinguTales.com ✨\"\n" +
+    `    "This story was made just for ${childEnglishName} with love at TinguTales.com 🌟"\n` +
+    "    \"Your next adventure is waiting... TinguTales.com 🚀\"\n" +
+    "  Always end with TinguTales.com on its own line.\n\n" +
     "Story Outline:\n" +
     `Title: ${outline.title}\n` +
     `Synopsis: ${outline.synopsis}\n` +
     `Pages: ${JSON.stringify(outline.pages)}\n` +
     `${incidentNote}\n\n` +
     `Write text for ALL ${numPages} pages. Follow the sentence-count rule per page from the writing guide.\n` +
-    `Text MUST be written in ${languageName} script (not transliteration).\n\n` +
+    `Text MUST be written in ${languageName} script (not transliteration) for story pages.\n` +
+    `The last page (page ${numPages - 1}, back cover + branding) MUST be in English only.\n\n` +
     `Return ONLY a valid JSON array (no markdown):\n${jsonTemplate}`;
 
   const response = await ai.models.generateContent({
@@ -421,6 +430,7 @@ async function writeStory(
         "For Hindi/Marathi use Devanagari script, Kannada use Kannada script, Tamil use Tamil script, " +
         "Telugu use Telugu script, Bengali use Bengali script, Gujarati use Gujarati script, " +
         "Malayalam use Malayalam script. If language is English, write in simple engaging English.\n\n" +
+        `Page rule override: page ${numPages - 1} (back cover + branding) must be English only.\n\n` +
         "CORE STORYTELLING PRINCIPLE: Every story MUST have a learning arc. The child character " +
         "starts without knowing the lesson, faces a real challenge, learns through experience " +
         "(shown — never told), and ends feeling proud and capable. The reader should close the " +
@@ -456,8 +466,10 @@ async function writeStory(
  * @param {string} languageName - Target language display name.
  * @param {string} languageCode - 2-letter language code.
  * @param {string} childName - The child's name.
+ * @param {string} childEnglishName - The child's name in English script.
  * @param {number} childAge - The child's age.
  * @param {string} storyTitle - Current story title.
+ * @param {string} storySubtitle - Current story subtitle.
  * @param {string} sarvamApiKey - Sarvam API subscription key.
  * @return {Promise<object>} QA-corrected pages, corrected title, and issues list.
  */
@@ -466,14 +478,15 @@ async function qaAndNaturalize(
   languageName: string,
   languageCode: string,
   childName: string,
+  childEnglishName: string,
   childAge: number,
   storyTitle: string,
+  storySubtitle: string,
   sarvamApiKey: string
-): Promise<{pages: PageText[]; title: string; issues: string[]; tokens: number; inputTokens?: number; outputTokens?: number}> {
+): Promise<{pages: PageText[]; title: string; subtitle: string; issues: string[]; tokens: number; inputTokens?: number; outputTokens?: number}> {
   const writingGuide = ageWritingGuide(childAge);
   const numPages = pages.length;
-  const storyOnlyPages = pages.filter((p) => p.page_type === "story" || p.page_type === "cover" || p.page_type === "back_cover");
-  const brandingPages = pages.filter((p) => p.page_type === "branding");
+  const storyOnlyPages = pages.filter((p) => p.page_type === "story");
 
   logger.info("[qaAndNaturalize] starting", {
     languageCode,
@@ -481,7 +494,6 @@ async function qaAndNaturalize(
     childAge,
     totalPages: numPages,
     storyPages: storyOnlyPages.length,
-    brandingPages: brandingPages.length,
   });
 
   // Build a compact JSON representation for the prompt
@@ -506,7 +518,7 @@ async function qaAndNaturalize(
     "5. Keep cultural references warm and authentic — mention familiar Indian sounds, smells, textures.\n\n" +
     "QUALITY CHECKS (fix any issues found):\n" +
     `- Name consistency: "${childName}" must be spelled exactly the same on every page.\n` +
-    `- Language consistency: all story pages MUST be in ${languageName} only.\n` +
+    `- Language consistency: story pages MUST be in ${languageName} only.\n` +
     `- Reading level compliance:\n${writingGuide}\n` +
     `- Safety: no fear, violence, or content inappropriate for a ${childAge}-year-old.\n` +
     `- Title must feature ${childName}'s name.\n\n` +
@@ -514,13 +526,16 @@ async function qaAndNaturalize(
 
   const userPrompt =
     `Story title: "${storyTitle}"\n` +
+    `Story subtitle: "${storySubtitle}"\n` +
     `Language: ${languageName} (${languageCode})\n` +
     `Child: ${childName}, Age: ${childAge}\n` +
+    `Child name in English script for back cover: ${childEnglishName}\n` +
     `Total pages including branding: ${numPages}\n\n` +
     `Pages to review and rewrite:\n${pagesJson}\n\n` +
     "Return this exact JSON shape:\n" +
     "{\n" +
     `  "corrected_title": "<improved title, must include ${childName}'s name>",\n` +
+    `  "corrected_subtitle": "<improved subtitle in ${languageName}, 5-8 words, warm and poetic>",\n` +
     "  \"issues\": [\"<issue 1>\", \"<issue 2>\"],\n" +
     "  \"pages\": [\n" +
     storyOnlyPages.map((p) =>
@@ -548,7 +563,7 @@ async function qaAndNaturalize(
         {role: "user", content: userPrompt},
       ],
       temperature: 0.3,
-      max_tokens: 4096,
+      max_tokens: 4000,
     }),
   });
 
@@ -576,33 +591,54 @@ async function qaAndNaturalize(
 
   const raw = json.choices?.[0]?.message?.content ?? "";
 
-  // Strip markdown fences if present
+  // Extract JSON object robustly — handles markdown fences and leading/trailing prose
   let cleaned = raw.trim();
+  // Strip code fences first
   if (cleaned.startsWith("```")) {
     const firstNewline = cleaned.indexOf("\n");
     cleaned = firstNewline >= 0 ? cleaned.slice(firstNewline + 1) : cleaned.slice(3);
   }
   if (cleaned.endsWith("```")) cleaned = cleaned.slice(0, -3);
+  cleaned = cleaned.trim();
+  // If there's prose before/after the JSON, extract just the object
+  const firstBrace = cleaned.indexOf("{");
+  const lastBrace = cleaned.lastIndexOf("}");
+  if (firstBrace > 0 || lastBrace < cleaned.length - 1) {
+    if (firstBrace >= 0 && lastBrace > firstBrace) {
+      cleaned = cleaned.slice(firstBrace, lastBrace + 1);
+    }
+  }
 
   let parsed: {
     corrected_title?: string;
+    corrected_subtitle?: string;
     issues?: string[];
     pages?: {page: number; text: string}[];
   };
   try {
-    parsed = JSON.parse(cleaned.trim()) as {
+    parsed = JSON.parse(cleaned) as {
       corrected_title?: string;
+      corrected_subtitle?: string;
       issues?: string[];
       pages?: {page: number; text: string}[];
     };
   } catch (parseErr) {
-    logger.error("[qaAndNaturalize] failed to parse Sarvam JSON", {
+    logger.error("[qaAndNaturalize] failed to parse Sarvam JSON — falling back to original pages", {
       rawLength: raw.length,
       cleanedLength: cleaned.length,
       preview: cleaned.slice(0, 400),
       parseErr,
     });
-    throw parseErr;
+    // Fall back gracefully — return original pages unchanged
+    return {
+      pages,
+      title: storyTitle,
+      subtitle: storySubtitle,
+      issues: ["QA agent returned unparseable JSON — original pages used"],
+      tokens: json.usage?.total_tokens ?? 0,
+      inputTokens: json.usage?.prompt_tokens,
+      outputTokens: json.usage?.completion_tokens,
+    };
   }
 
   // Merge corrected texts back into the original page objects (preserving metadata)
@@ -613,11 +649,6 @@ async function qaAndNaturalize(
     ...p,
     text: correctedMap.has(p.page) ? (correctedMap.get(p.page) ?? p.text) : p.text,
   }));
-  // Branding pages are always kept as-is
-  brandingPages.forEach((bp) => {
-    const idx = mergedPages.findIndex((p) => p.page === bp.page);
-    if (idx >= 0) mergedPages[idx] = bp;
-  });
 
   const sarvamTokens = json.usage?.total_tokens ?? 0;
 
@@ -625,12 +656,14 @@ async function qaAndNaturalize(
     correctedPages: parsed.pages?.length ?? 0,
     issuesCount: parsed.issues?.length ?? 0,
     titleChanged: Boolean(parsed.corrected_title && parsed.corrected_title !== storyTitle),
+    subtitleChanged: Boolean(parsed.corrected_subtitle && parsed.corrected_subtitle !== storySubtitle),
     totalTokens: sarvamTokens,
   });
 
   return {
     pages: mergedPages,
     title: parsed.corrected_title ?? storyTitle,
+    subtitle: parsed.corrected_subtitle ?? storySubtitle,
     issues: parsed.issues ?? [],
     tokens: sarvamTokens,
     inputTokens: json.usage?.prompt_tokens,
@@ -682,8 +715,10 @@ export const generateStoryDraft = onCall<GenerateStoryDraftRequest>(
     if (profile.user_id !== userId) throw new HttpsError("permission-denied", "Profile does not belong to this user.");
 
     // Use native name when provided (e.g. "अर्जुन"), otherwise English name
-    const childName = safeNativeChildName.trim() || (profile.name as string);
+    const childEnglishName = (profile.name as string) || "";
+    const childName = safeNativeChildName.trim() || childEnglishName;
     const childAge = (profile.age as number) ?? 5;
+    const childGender: string = (profile.gender as string) ?? "";
 
     // ── Read model name from Firestore ────────────────────────────────────
     const modelDoc = await db.collection("models").doc("story_generation_model").get();
@@ -699,28 +734,77 @@ export const generateStoryDraft = onCall<GenerateStoryDraftRequest>(
 
     const ai = new GoogleGenAI({apiKey});
 
-    // ── Create story document with "drafting" status ──────────────────────
-    const storyId = `story_${uuidv4().replace(/-/g, "").slice(0, 12)}`;
-    const storyRef = db.collection("stories").doc(storyId);
-    await storyRef.set({
-      story_id: storyId,
-      user_id: userId,
-      profile_id: profileId,
-      child_name: childName,
-      language,
-      language_code: languageCode,
-      interests,
-      custom_incident: safeCustomIncident,
-      page_count: pageCount,
-      avatar_url: profile.avatar_jpeg_url || profile.avatar_url || "",
-      template_title: safeTemplateTitle || null,
-      template_desc: safeTemplateDesc || null,
-      status: "drafting",
-      title: "",
-      draft_pages: [],
-      created_at: FieldValue.serverTimestamp(),
-      updated_at: FieldValue.serverTimestamp(),
-    });
+    // ── Reuse or create story document ───────────────────────────────────
+    // If a previous attempt for the same user+profile+language failed, reuse
+    // that doc instead of creating a new one (avoids orphaned draft_failed docs).
+    let storyId: string;
+    let storyRef: FirebaseFirestore.DocumentReference;
+    let isRetry = false;
+
+    const failedQuery = await db.collection("stories")
+      .where("user_id", "==", userId)
+      .where("profile_id", "==", profileId)
+      .where("language_code", "==", languageCode)
+      .where("status", "==", "draft_failed")
+      .orderBy("updated_at", "desc")
+      .limit(1)
+      .get();
+
+    if (!failedQuery.empty) {
+      const failedDoc = failedQuery.docs[0];
+      storyId = failedDoc.id;
+      storyRef = failedDoc.ref;
+      isRetry = true;
+      logger.info(`[generateStoryDraft] reusing draft_failed doc ${storyId} for userId=${userId}`);
+    } else {
+      storyId = `story_${uuidv4().replace(/-/g, "").slice(0, 12)}`;
+      storyRef = db.collection("stories").doc(storyId);
+    }
+
+    if (isRetry) {
+      await storyRef.update({
+        // Refresh mutable fields in case profile or params changed
+        child_name: childName,
+        child_name_english: childEnglishName,
+        child_age: childAge,
+        child_gender: childGender,
+        interests,
+        custom_incident: safeCustomIncident,
+        page_count: pageCount,
+        avatar_url: profile.avatar_jpeg_url || profile.avatar_url || "",
+        avatar_jpeg_url: profile.avatar_jpeg_url || "",
+        template_title: safeTemplateTitle || null,
+        template_desc: safeTemplateDesc || null,
+        status: "drafting",
+        title: "",
+        draft_pages: [],
+        updated_at: FieldValue.serverTimestamp(),
+      });
+    } else {
+      await storyRef.set({
+        story_id: storyId,
+        user_id: userId,
+        profile_id: profileId,
+        child_name: childName,
+        child_name_english: childEnglishName,
+        child_age: childAge,
+        child_gender: childGender,
+        language,
+        language_code: languageCode,
+        interests,
+        custom_incident: safeCustomIncident,
+        page_count: pageCount,
+        avatar_url: profile.avatar_jpeg_url || profile.avatar_url || "",
+        avatar_jpeg_url: profile.avatar_jpeg_url || "",
+        template_title: safeTemplateTitle || null,
+        template_desc: safeTemplateDesc || null,
+        status: "drafting",
+        title: "",
+        draft_pages: [],
+        created_at: FieldValue.serverTimestamp(),
+        updated_at: FieldValue.serverTimestamp(),
+      });
+    }
 
     try {
       let totalTokens = 0;
@@ -743,13 +827,12 @@ export const generateStoryDraft = onCall<GenerateStoryDraftRequest>(
       // === Agent 3: Write the story ===
       logger.info(`[generateStoryDraft] [${storyId}] step 3/4 — writing story`);
       const {pages: rawPages, tokens: t3} = await writeStory(
-        ai, modelName, outline, language, childName, childAge, pageCount, safeCustomIncident
+        ai, modelName, outline, language, childName, childEnglishName, childAge, pageCount, safeCustomIncident
       );
       totalTokens += t3;
       logger.info(`[generateStoryDraft] [${storyId}] wrote ${rawPages.length} pages, totalTokens=${totalTokens}`);
 
-      // Annotate each page with its type from the outline, and inject avatar
-      // URL into the branding page so the viewer can render it
+      // Annotate each page with its type from the outline, and inject avatar URL
       const childAvatarUrl: string = profile.avatar_jpeg_url || profile.avatar_url || "";
       const pageTypeMap = new Map<number, string>(
         outline.pages.map((p) => [p.page, p.type])
@@ -757,22 +840,25 @@ export const generateStoryDraft = onCall<GenerateStoryDraftRequest>(
       for (const page of rawPages) {
         page.page_type = pageTypeMap.get(page.page) ?? "story";
       }
-      const brandingPage = rawPages.find((p) => p.page_type === "branding");
-      if (brandingPage && childAvatarUrl) {
-        brandingPage.avatar_url = childAvatarUrl;
+      // Inject avatar URL into the back cover page
+      const backCoverRaw = rawPages.find((p) => p.page_type === "back_cover");
+      if (backCoverRaw && childAvatarUrl) {
+        backCoverRaw.avatar_url = childAvatarUrl;
       }
 
       // === Agent 4: QA & Naturalize (Sarvam sarvam-30b) ===
       let draftPages = rawPages;
       let finalTitle = outline.title;
+      let finalSubtitle = outline.subtitle ?? "";
       if (sarvamApiKey) {
         logger.info(`[generateStoryDraft] [${storyId}] step 4/4 — QA & naturalizing with Sarvam`);
         try {
           const qaResult = await qaAndNaturalize(
-            rawPages, language, languageCode, childName, childAge, outline.title, sarvamApiKey
+            rawPages, language, languageCode, childName, childEnglishName, childAge, outline.title, outline.subtitle ?? "", sarvamApiKey
           );
           draftPages = qaResult.pages;
           if (qaResult.title) finalTitle = qaResult.title;
+          if (qaResult.subtitle) finalSubtitle = qaResult.subtitle;
           if (qaResult.issues.length > 0) {
             logger.info(`[generateStoryDraft] [${storyId}] QA issues fixed: ${qaResult.issues.join("; ")}`);
           }
@@ -789,6 +875,33 @@ export const generateStoryDraft = onCall<GenerateStoryDraftRequest>(
         logger.info(`[generateStoryDraft] [${storyId}] SARVAM_API_KEY not set — skipping QA step`);
       }
 
+      // Override cover page — store title + subtitle as separate editable fields
+      const coverPage = draftPages.find((p) => p.page === 0);
+      if (coverPage) {
+        coverPage.cover_title = finalTitle;
+        coverPage.cover_subtitle = finalSubtitle;
+        coverPage.text = "";
+      }
+
+      // Enforce back cover policy: English-only text with English child name.
+      const backCoverPage = draftPages.find((p) => p.page === pageCount - 1);
+      if (backCoverPage) {
+        const backText = String(backCoverPage.text ?? "").trim();
+        const hasNonAscii = Array.from(backText).some((ch) => ch.charCodeAt(0) > 127);
+        const hasEnglishName = childEnglishName ?
+          backText.toLowerCase().includes(childEnglishName.toLowerCase()) :
+          true;
+        const hasBranding = backText.toLowerCase().includes("tingutales.com");
+        if (hasNonAscii || !hasEnglishName || !hasBranding) {
+          const safeMoral = String(outline.moral ?? "").trim() || "kindness makes every adventure brighter";
+          backCoverPage.text =
+            `${childEnglishName} learned an important lesson today: ${safeMoral}. ` +
+            "Try it in your own adventure too!\n\n" +
+            `This story was made just for ${childEnglishName} with love at TinguTales.com 🌟\nTinguTales.com`;
+          logger.info(`[generateStoryDraft] [${storyId}] back cover normalized to English policy`);
+        }
+      }
+
       // Record token consumption
       void recordTokenConsumption(userId, "story_draft_generation", "gemini", totalTokens);
 
@@ -797,6 +910,8 @@ export const generateStoryDraft = onCall<GenerateStoryDraftRequest>(
         status: "draft_ready",
         title: finalTitle,
         title_english: outline.titleEnglish ?? finalTitle,
+        subtitle: finalSubtitle,
+        subtitle_english: outline.subtitleEnglish ?? "",
         synopsis: outline.synopsis ?? "",
         moral: outline.moral ?? "",
         draft_pages: draftPages,
@@ -807,6 +922,7 @@ export const generateStoryDraft = onCall<GenerateStoryDraftRequest>(
         storyId,
         title: finalTitle,
         titleEnglish: outline.titleEnglish ?? finalTitle,
+        subtitle: finalSubtitle,
         draftPages,
         status: "draft_ready",
       };

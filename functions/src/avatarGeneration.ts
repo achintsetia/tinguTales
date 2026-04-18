@@ -148,8 +148,11 @@ export async function generateAvatar(
   // Save PNG and JPEG, each with a Firebase download token for direct <img src> use
   logger.info(`[generateAvatar] saving PNG to ${pngPath}`);
   const pngDownloadUrl = await saveWithDownloadUrl(pngPath, avatarPng, "image/png");
-  logger.info("[generateAvatar] converting to JPEG");
-  const avatarJpg = await sharp(avatarPng).jpeg({quality: 85}).toBuffer();
+  logger.info("[generateAvatar] converting to JPEG (max 512px)");
+  const avatarJpg = await sharp(avatarPng)
+    .resize(512, 512, {fit: "inside", withoutEnlargement: true})
+    .jpeg({quality: 85})
+    .toBuffer();
   logger.info(`[generateAvatar] saving JPEG to ${jpgPath} — size=${avatarJpg.length}B`);
   const jpgDownloadUrl = await saveWithDownloadUrl(jpgPath, avatarJpg, "image/jpeg");
 

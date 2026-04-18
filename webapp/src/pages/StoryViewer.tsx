@@ -1,13 +1,14 @@
 import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import { db } from "../firebase";
+import { db, functions } from "../firebase";
 import { doc as firestoreDoc, onSnapshot } from "firebase/firestore";
+import { httpsCallable } from "firebase/functions";
 import { toast } from "sonner";
 import { Button } from "../components/ui/button";
 import {
   BookOpen, Download, Sparkles, Home, Star, Wand2,
-  ChevronLeft, ChevronRight, ZoomIn, X
+  ChevronLeft, ChevronRight, ZoomIn, X, RotateCcw
 } from "lucide-react";
 import { Dialog, DialogContent } from "../components/ui/dialog";
 import BlurImage from "../components/BlurImage";
@@ -29,9 +30,14 @@ const STATUS_MESSAGES = {
   planning_story: "Planning an amazing adventure...",
   writing_story: "Writing the story...",
   quality_check: "Making sure everything is perfect...",
+  approved: "Story approved — preparing illustrations...",
+  generating_scenes: "Imagining every scene...",
+  generating_cover: "Painting the cover...",
+  generating_pages: "Drawing illustrations page by page...",
   creating_scenes: "Imagining beautiful scenes...",
   generating_images: "Drawing illustrations...",
   creating_pdf: "Binding your storybook...",
+  scenes_failed: "Scene planning failed — tap Retry to try again",
 };
 
 export default function StoryViewer() {
@@ -39,6 +45,7 @@ export default function StoryViewer() {
   const navigate = useNavigate();
   const [story, setStory] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [retrying, setRetrying] = useState(false);
   const [magicIdx, setMagicIdx] = useState(0);
   const [currentPage, setCurrentPage] = useState(0);
   const [leavingPage, setLeavingPage] = useState(null); // index of page animating out
@@ -64,7 +71,7 @@ export default function StoryViewer() {
 
   // Cycle magic messages
   useEffect(() => {
-    if (story?.status === "completed" || story?.status === "failed") return;
+    if (story?.status === "completed" || story?.status === "failed" || story?.status === "scenes_failed") return;
     const interval = setInterval(() => {
       setMagicIdx((prev) => (prev + 1) % MAGIC_MESSAGES.length);
     }, 3000);
@@ -114,11 +121,11 @@ export default function StoryViewer() {
   }, [story?.status]);
 
   // Generating / in-progress state
-  if (loading || (story && story.status !== "completed" && story.status !== "failed")) {
+  if (loading || (story && story.status !== "completed" && story.status !== "failed" && story.status !== "scenes_failed")) {
     const pageCount = story?.page_count || 8;
     const avatarUrl = story?.avatar_url || null;
     const isDrawing = story?.status === "generating_images";
-    const stepsOrder = ["understanding_input", "planning_story", "writing_story", "quality_check", "creating_scenes", "generating_images", "creating_pdf"];
+    const stepsOrder = ["understanding_input", "planning_story", "writing_story", "quality_check", "approved", "generating_scenes", "generating_cover", "generating_pages", "creating_pdf"];
     const currentStepIdx = stepsOrder.indexOf(story?.status ?? "");
 
     // Pages the server has already written (may have image_url or "")
@@ -302,6 +309,59 @@ export default function StoryViewer() {
         <p className="text-xs text-[#1E1B4B]/25 mt-8 text-center">
           This usually takes 2–3 minutes. Sit tight!
         </p>
+      </div>
+    );
+  }
+
+  // scenes_failed state — inline retry (shown inside the generating UI)
+  if (story?.status === "scenes_failed") {
+    return (
+      <div className="min-h-screen bg-[#FDFBF7] flex items-center justify-center">
+        <div className="text-center max-w-md px-6">
+          <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-[#FF9F1C]/10 flex items-center justify-center">
+            <Sparkles className="w-10 h-10 text-[#FF9F1C]" strokeWidth={2} />
+          </div>
+          <h2
+            className="text-2xl font-medium text-[#1E1B4B] mb-3"
+            style={{ fontFamily: "Fredoka" }}
+          >
+            Scene planning hit a snag
+          </h2>
+          <p className="text-[#1E1B4B]/60 mb-6">
+            The illustration planner hit a temporary hiccup. Your story text is safe
+            — tap <strong>Retry</strong> to try again.
+          </p>
+          <div className="flex flex-col sm:flex-row gap-3 justify-center mt-6">
+            <Button
+              onClick={async () => {
+                if (retrying) return;
+                setRetrying(true);
+                try {
+                  const fn = httpsCallable(functions, "retrySceneGeneration");
+                  await fn({ storyId });
+                  toast.success("Retrying scene generation…");
+                } catch (e: unknown) {
+                  const msg = e instanceof Error ? e.message : "Retry failed";
+                  toast.error(msg);
+                  setRetrying(false);
+                }
+              }}
+              disabled={retrying}
+              className="rounded-full bg-[#FF9F1C] hover:bg-[#E88A12] text-[#1E1B4B] font-bold px-8 min-h-[48px] gap-2"
+            >
+              <RotateCcw className={`w-4 h-4 ${retrying ? "animate-spin" : ""}`} strokeWidth={2.5} />
+              {retrying ? "Retrying…" : "Retry Illustrations"}
+            </Button>
+            <Button
+              variant="ghost"
+              onClick={() => navigate("/dashboard")}
+              className="rounded-full text-[#1E1B4B]/50 hover:text-[#1E1B4B] px-8 min-h-[48px]"
+            >
+              <Home className="w-4 h-4 mr-2" strokeWidth={2} />
+              Dashboard
+            </Button>
+          </div>
+        </div>
       </div>
     );
   }

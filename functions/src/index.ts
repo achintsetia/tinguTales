@@ -13,4 +13,5 @@ export {deleteUserUpload} from "./deleteUserUpload.js";
 export {transliterateChildName} from "./transliterateChildName.js";
 export {generateStoryDraft} from "./generateStoryDraft.js";
 export {approveStoryDraft} from "./approveStoryDraft.js";
+export {generateScenes, retrySceneGeneration} from "./generateScenes.js";
 export {getAdminCostReport} from "./getAdminCostReport.js";

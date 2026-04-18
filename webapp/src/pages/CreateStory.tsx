@@ -246,6 +246,7 @@ export default function CreateStory() {
   const [draftStatus, setDraftStatus] = useState("");
   const [draftError, setDraftError] = useState("");
   const [draftTitle, setDraftTitle] = useState("");
+  const [draftSubtitle, setDraftSubtitle] = useState("");
   const [editedPages, setEditedPages] = useState([]);
   const [loadingStep, setLoadingStep] = useState(0);
   const loadingTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
@@ -571,7 +572,7 @@ export default function CreateStory() {
           customIncident?: string; nativeChildName?: string;
           templateTitle?: string; templateDesc?: string;
         },
-        {storyId: string; title: string; titleEnglish: string; draftPages: {page: number; text: string}[]; status: string}
+        {storyId: string; title: string; titleEnglish: string; subtitle?: string; draftPages: {page: number; text: string; cover_title?: string; cover_subtitle?: string; page_type?: string; avatar_url?: string}[]; status: string}
       >(functions, "generateStoryDraft", {timeout: 570000}); // 9.5 min client timeout
 
       const activeTemplate = selectedTemplate
@@ -597,6 +598,7 @@ export default function CreateStory() {
       const {storyId, title, draftPages} = result.data;
       setDraftStoryId(storyId);
       setDraftTitle(title);
+      setDraftSubtitle(result.data.subtitle || "");
       setEditedPages(draftPages);
       setDraftStatus("draft_ready");
       setDraftLoading(false);
@@ -650,7 +652,15 @@ export default function CreateStory() {
             const data = snap.data();
             if (data.status === "draft_ready" && data.draft_pages?.length > 0) {
               setDraftTitle(data.title || "");
-              setEditedPages(data.draft_pages.map((p: {page: number; text: string}) => ({page: p.page, text: p.text})));
+              setDraftSubtitle(data.subtitle || "");
+              setEditedPages(data.draft_pages.map((p: {page: number; text: string; cover_title?: string; cover_subtitle?: string; page_type?: string; avatar_url?: string}) => ({
+                page: p.page,
+                text: p.text,
+                page_type: p.page_type,
+                cover_title: p.cover_title,
+                cover_subtitle: p.cover_subtitle,
+                avatar_url: p.avatar_url,
+              })));
               setDraftStatus("draft_ready");
               setDraftLoading(false);
               // Ensure URL reflects this story ID
@@ -677,6 +687,7 @@ export default function CreateStory() {
       setDraftStatus("");
       setDraftError("");
       setDraftTitle("");
+      setDraftSubtitle("");
       setEditedPages([]);
       setApproving(false);
     }
@@ -1666,6 +1677,9 @@ export default function CreateStory() {
                   {draftTitle && (
                     <p className="font-native text-lg text-[#3730A3] font-medium mt-2">{draftTitle}</p>
                   )}
+                  {draftSubtitle && (
+                    <p className="font-native text-sm text-[#1E1B4B]/50 mt-1 italic">{draftSubtitle}</p>
+                  )}
                   {/* Quick action buttons */}
                   <div className="flex items-center justify-center gap-3 mt-4">
                     <button
@@ -1677,6 +1691,7 @@ export default function CreateStory() {
                         setDraftStoryId(null);
                         setEditedPages([]);
                         setDraftTitle("");
+                        setDraftSubtitle("");
                         setDraftError("");
                         // Re-trigger draft
                         setTimeout(() => handleGenerateDraft(), 100);
@@ -1721,6 +1736,32 @@ export default function CreateStory() {
                             <span className="text-xs text-[#1E1B4B]/30">Branding — not editable</span>
                           )}
                         </div>
+                        {isCover ? (
+                          <div className="space-y-3">
+                            <div>
+                              <label className="text-xs font-semibold text-[#1E1B4B]/50 uppercase tracking-wide mb-1 block">Title</label>
+                              <input
+                                type="text"
+                                value={typeof page === "object" ? (page as {cover_title?: string}).cover_title || "" : ""}
+                                onChange={(e) => setEditedPages((prev) =>
+                                  prev.map((p, i) => i === idx && typeof p === "object" ? { ...p, cover_title: e.target.value } : p)
+                                )}
+                                className={`w-full rounded-2xl border-2 px-4 py-3 text-base font-semibold text-[#1E1B4B] transition-colors border-[#F3E8FF] focus:border-[#FF9F1C] focus:outline-none bg-[#FDFBF7] ${selectedLang?.font || ""}`}
+                              />
+                            </div>
+                            <div>
+                              <label className="text-xs font-semibold text-[#1E1B4B]/50 uppercase tracking-wide mb-1 block">Subtitle</label>
+                              <input
+                                type="text"
+                                value={typeof page === "object" ? (page as {cover_subtitle?: string}).cover_subtitle || "" : ""}
+                                onChange={(e) => setEditedPages((prev) =>
+                                  prev.map((p, i) => i === idx && typeof p === "object" ? { ...p, cover_subtitle: e.target.value } : p)
+                                )}
+                                className={`w-full rounded-2xl border-2 px-4 py-3 text-sm text-[#1E1B4B] transition-colors border-[#F3E8FF] focus:border-[#FF9F1C] focus:outline-none bg-[#FDFBF7] ${selectedLang?.font || ""}`}
+                              />
+                            </div>
+                          </div>
+                        ) : (
                         <textarea
                           value={typeof page === "object" ? page.text || "" : page}
                           onChange={(e) => {
@@ -1734,13 +1775,14 @@ export default function CreateStory() {
                             );
                           }}
                           readOnly={isBackCover}
-                          rows={isCover ? 2 : 4}
+                          rows={4}
                           className={`w-full rounded-2xl border-2 px-4 py-3 text-sm text-[#1E1B4B] resize-none transition-colors ${selectedLang?.font || ""} ${
                             isBackCover
                               ? "border-transparent bg-[#FDFBF7] text-[#1E1B4B]/40 cursor-default"
                               : "border-[#F3E8FF] focus:border-[#FF9F1C] focus:outline-none bg-[#FDFBF7]"
                           }`}
                         />
+                        )}
                       </div>
                     );
                   })}
