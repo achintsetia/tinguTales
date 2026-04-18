@@ -568,9 +568,14 @@ export default function CreateStory() {
           profileId: string; language: string; languageCode: string;
           interests: string[]; pageCount: number;
           customIncident?: string; nativeChildName?: string;
+          templateTitle?: string; templateDesc?: string;
         },
         {storyId: string; title: string; titleEnglish: string; draftPages: {page: number; text: string}[]; status: string}
       >(functions, "generateStoryDraft", {timeout: 570000}); // 9.5 min client timeout
+
+      const activeTemplate = selectedTemplate
+        ? STORY_TEMPLATES.find((t) => t.id === selectedTemplate)
+        : null;
 
       const result = await generateFn({
         profileId: selectedProfile.profile_id,
@@ -580,6 +585,8 @@ export default function CreateStory() {
         pageCount: pageCount,
         customIncident: customIncident.trim() || undefined,
         nativeChildName: (selectedLang?.code !== "en" && nativeChildName.trim()) ? nativeChildName.trim() : undefined,
+        templateTitle: activeTemplate?.title || undefined,
+        templateDesc: activeTemplate?.desc || undefined,
       });
 
       const {storyId, title, draftPages} = result.data;
@@ -1640,39 +1647,6 @@ export default function CreateStory() {
                   )}
                   {/* Quick action buttons */}
                   <div className="flex items-center justify-center gap-3 mt-4">
-                    <button
-                      data-testid="btn-change-theme"
-                      onClick={() => {
-                        // Go back to interests step — discard draft
-                        if (draftStoryId) {
-                          deleteDoc(firestoreDoc(db, "stories", draftStoryId)).catch(() => {});
-                        }
-                        setDraftStoryId(null);
-                        setEditedPages([]);
-                        setDraftTitle("");
-                        setStep(3);
-                      }}
-                      className="inline-flex items-center gap-1.5 text-sm font-semibold text-[#3730A3] hover:text-[#FF9F1C] transition-colors bg-[#3730A3]/5 hover:bg-[#FF9F1C]/10 rounded-full px-4 py-2"
-                    >
-                      <ArrowLeft className="w-3.5 h-3.5" strokeWidth={2.5} />
-                      Change Theme
-                    </button>
-                    <button
-                      data-testid="btn-change-language"
-                      onClick={() => {
-                        if (draftStoryId) {
-                          deleteDoc(firestoreDoc(db, "stories", draftStoryId)).catch(() => {});
-                        }
-                        setDraftStoryId(null);
-                        setEditedPages([]);
-                        setDraftTitle("");
-                        setStep(2);
-                      }}
-                      className="inline-flex items-center gap-1.5 text-sm font-semibold text-[#3730A3] hover:text-[#FF9F1C] transition-colors bg-[#3730A3]/5 hover:bg-[#FF9F1C]/10 rounded-full px-4 py-2"
-                    >
-                      <Globe className="w-3.5 h-3.5" strokeWidth={2.5} />
-                      Change Language
-                    </button>
                     <button
                       data-testid="btn-regenerate-draft"
                       onClick={() => {

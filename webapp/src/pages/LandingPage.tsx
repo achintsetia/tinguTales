@@ -10,8 +10,8 @@ const HERO_IMAGE = "https://static.prod-images.emergentagent.com/jobs/29fd7301-9
 const FEATURES = [
   {
     icon: Globe,
-    title: "7 Indian Languages",
-    desc: "Stories written natively in Hindi, Kannada, Tamil, Telugu, Marathi, Bengali & English",
+    title: "9 Story Languages",
+    desc: "Generate stories in English, Hindi, Kannada, Tamil, Telugu, Marathi, Bengali, Gujarati, and Malayalam",
     color: "#3730A3",
   },
   {
@@ -35,13 +35,15 @@ const FEATURES = [
 ];
 
 const LANGUAGES_PREVIEW = [
+  { code: "en", native: "English", name: "English" },
   { code: "hi", native: "\u0939\u093f\u0928\u094d\u0926\u0940", name: "Hindi" },
   { code: "kn", native: "\u0c95\u0ca8\u0ccd\u0ca8\u0ca1", name: "Kannada" },
   { code: "ta", native: "\u0ba4\u0bae\u0bbf\u0bb4\u0bcd", name: "Tamil" },
   { code: "te", native: "\u0c24\u0c46\u0c32\u0c41\u0c17\u0c41", name: "Telugu" },
-  { code: "bn", native: "\u09ac\u09be\u0982\u09b2\u09be", name: "Bengali" },
   { code: "mr", native: "\u092e\u0930\u093e\u0920\u0940", name: "Marathi" },
-  { code: "en", native: "English", name: "English" },
+  { code: "bn", native: "\u09ac\u09be\u0982\u09b2\u09be", name: "Bengali" },
+  { code: "gu", native: "\u0a97\u0ac1\u0a9c\u0ab0\u0abe\u0aa4\u0ac0", name: "Gujarati" },
+  { code: "ml", native: "\u0d2e\u0d32\u0d2f\u0d3e\u0d33\u0d02", name: "Malayalam" },
 ];
 
 export default function LandingPage() {
@@ -100,7 +102,7 @@ export default function LandingPage() {
             </h1>
             <p className="text-base sm:text-lg leading-relaxed text-white/85 mb-10 max-w-lg animate-fade-in-up stagger-3">
               Create magical illustrated stories featuring your child as the hero,
-              written natively in Indian languages they love.
+              generated in 9 languages they understand and love.
             </p>
             <div className="flex flex-wrap gap-4 animate-fade-in-up stagger-4">
               <Button

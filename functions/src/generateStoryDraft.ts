@@ -125,6 +125,7 @@ interface StoryOutline {
   titleEnglish: string;
   synopsis: string;
   moral: string;
+  lessonPhrase?: string;
   pages: StoryPage[];
 }
 
@@ -145,6 +146,10 @@ interface GenerateStoryDraftRequest {
   pageCount?: number;
   customIncident?: string;
   nativeChildName?: string;
+  /** Title of the selected story template, e.g. "Chhath Puja" */
+  templateTitle?: string;
+  /** Description of the selected story template */
+  templateDesc?: string;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -211,6 +216,8 @@ async function normalizeInterests(
  * @param {string} languageName - Target language display name.
  * @param {number} numPages - Total page count including cover and back cover.
  * @param {string} customIncident - Optional real-life incident to weave in.
+ * @param {string} templateTitle - Optional template title (e.g. "Chhath Puja").
+ * @param {string} templateDesc - Optional template description.
  * @return {Promise<object>} Story outline and token count.
  */
 async function planStory(
@@ -222,7 +229,9 @@ async function planStory(
   languageCode: string,
   languageName: string,
   numPages: number,
-  customIncident: string
+  customIncident: string,
+  templateTitle = "",
+  templateDesc = ""
 ): Promise<{outline: StoryOutline; tokens: number}> {
   const writingGuide = ageWritingGuide(childAge);
   // Page layout: 0=cover, 1..N-3=story, N-2=back_cover, N-1=branding
@@ -234,6 +243,14 @@ async function planStory(
     "Build the story arc so that this moment is the central challenge or inciting event.\n" +
     "Resolve it constructively: show resilience, learning, or kindness so the child feels\n" +
     "validated and empowered by the end. Keep it age-appropriate and emotionally warm." :
+    "";
+
+  const templateInstruction = templateTitle ?
+    `\n\nTEMPLATE THEME (MANDATORY): This story MUST be specifically about "${templateTitle}".\n` +
+    (templateDesc ? `Theme description: ${templateDesc}\n` : "") +
+    "The central event, setting, and story arc MUST revolve around this theme. " +
+    "Do NOT substitute with a different festival, event, or topic. " +
+    "Use the themes/interests only to enrich details within this specific story." :
     "";
 
   const pagesJson = [
@@ -265,7 +282,7 @@ async function planStory(
     `- Show ${childName} NOT knowing the lesson → encountering a challenge → learning by doing\n` +
     "- Be culturally relevant with Indian elements where natural\n" +
     `- Be age-appropriate for a ${childAge}-year-old\n` +
-    `- End with the child feeling proud and capable, not lectured${incidentInstruction}\n\n` +
+    `- End with the child feeling proud and capable, not lectured${templateInstruction}${incidentInstruction}\n\n` +
     "Return ONLY valid JSON (no markdown):\n" +
     "{\n" +
     `  "title": "Story title in ${languageName}",\n` +
@@ -358,7 +375,7 @@ async function writeStory(
     "brave, resilient, or proud. Keep the tone gentle and empowering." :
     "";
 
-  const lessonPhrase = (outline as any).lessonPhrase ||
+  const lessonPhrase = outline.lessonPhrase ||
     `${childName} learned something wonderful today!`;
 
   const prompt =
@@ -428,6 +445,200 @@ async function writeStory(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Agent 4 — QA & Naturalize  (Sarvam sarvam-30b)
+// Rewrites textbook-ish prose into spoken, colloquial Indian language and runs
+// quality checks: name spelling, age-appropriate vocabulary, cultural tone.
+// Falls back to original pages if the Sarvam call fails.
+// ─────────────────────────────────────────────────────────────────────────────
+/**
+ * Agent 4 — QA and naturalize story pages using the Sarvam sarvam-30b model.
+ * @param {PageText[]} pages - Draft pages from the story writer agent.
+ * @param {string} languageName - Target language display name.
+ * @param {string} languageCode - 2-letter language code.
+ * @param {string} childName - The child's name.
+ * @param {number} childAge - The child's age.
+ * @param {string} storyTitle - Current story title.
+ * @param {string} sarvamApiKey - Sarvam API subscription key.
+ * @return {Promise<object>} QA-corrected pages, corrected title, and issues list.
+ */
+async function qaAndNaturalize(
+  pages: PageText[],
+  languageName: string,
+  languageCode: string,
+  childName: string,
+  childAge: number,
+  storyTitle: string,
+  sarvamApiKey: string
+): Promise<{pages: PageText[]; title: string; issues: string[]; tokens: number; inputTokens?: number; outputTokens?: number}> {
+  const writingGuide = ageWritingGuide(childAge);
+  const numPages = pages.length;
+  const storyOnlyPages = pages.filter((p) => p.page_type === "story" || p.page_type === "cover" || p.page_type === "back_cover");
+  const brandingPages = pages.filter((p) => p.page_type === "branding");
+
+  logger.info("[qaAndNaturalize] starting", {
+    languageCode,
+    languageName,
+    childAge,
+    totalPages: numPages,
+    storyPages: storyOnlyPages.length,
+    brandingPages: brandingPages.length,
+  });
+
+  // Build a compact JSON representation for the prompt
+  const pagesJson = JSON.stringify(
+    storyOnlyPages.map((p) => ({page: p.page, type: p.page_type ?? "story", text: p.text})),
+    null,
+    2
+  );
+
+  const systemPrompt =
+    "You are a master editor for Indian children's storybooks. " +
+    "Your job is to transform textbook-style prose into warm, spoken, colloquial Indian storytelling. " +
+    `The story is written in ${languageName} for a ${childAge}-year-old child named ${childName}.\n\n` +
+    "SPOKEN LANGUAGE RULES (apply to EVERY page):\n" +
+    "1. Replace formal/passive constructions with direct, active, conversational phrasing.\n" +
+    "2. Use natural Indian storytelling rhythm — short punchy sentences, sound words (dhoom!, splash!, wow!), " +
+    "   direct quotes from characters using everyday speech patterns.\n" +
+    "3. Avoid English textbook clichés like \"Suddenly he realized\", \"It was a beautiful day\", " +
+    `   "The protagonist felt". Instead: "Oh! He stopped.", "What a sunny morning!", "${childName} smiled."\n` +
+    "4. For Indian languages: use natural spoken forms — contractions, common expressions, " +
+    "   particles and interjections used in everyday speech (e.g. \"अरे!\", \"वाह!\", \"enna?\" etc.).\n" +
+    "5. Keep cultural references warm and authentic — mention familiar Indian sounds, smells, textures.\n\n" +
+    "QUALITY CHECKS (fix any issues found):\n" +
+    `- Name consistency: "${childName}" must be spelled exactly the same on every page.\n` +
+    `- Language consistency: all story pages MUST be in ${languageName} only.\n` +
+    `- Reading level compliance:\n${writingGuide}\n` +
+    `- Safety: no fear, violence, or content inappropriate for a ${childAge}-year-old.\n` +
+    `- Title must feature ${childName}'s name.\n\n` +
+    "Return ONLY valid JSON — no markdown fences, no extra text.";
+
+  const userPrompt =
+    `Story title: "${storyTitle}"\n` +
+    `Language: ${languageName} (${languageCode})\n` +
+    `Child: ${childName}, Age: ${childAge}\n` +
+    `Total pages including branding: ${numPages}\n\n` +
+    `Pages to review and rewrite:\n${pagesJson}\n\n` +
+    "Return this exact JSON shape:\n" +
+    "{\n" +
+    `  "corrected_title": "<improved title, must include ${childName}'s name>",\n` +
+    "  \"issues\": [\"<issue 1>\", \"<issue 2>\"],\n" +
+    "  \"pages\": [\n" +
+    storyOnlyPages.map((p) =>
+      `    {"page": ${p.page}, "text": "<naturalized ${p.page_type ?? "story"} text>"}`
+    ).join(",\n") +
+    "\n  ]\n}";
+
+  logger.info("[qaAndNaturalize] calling Sarvam chat completions", {
+    model: "sarvam-30b",
+    temperature: 0.3,
+    maxTokens: 6000,
+    storyPages: storyOnlyPages.length,
+  });
+
+  const response = await fetch("https://api.sarvam.ai/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${sarvamApiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: "sarvam-30b",
+      messages: [
+        {role: "system", content: systemPrompt},
+        {role: "user", content: userPrompt},
+      ],
+      temperature: 0.3,
+      max_tokens: 6000,
+    }),
+  });
+
+  if (!response.ok) {
+    const errText = await response.text().catch(() => response.statusText);
+    logger.error("[qaAndNaturalize] Sarvam HTTP error", {
+      status: response.status,
+      statusText: response.statusText,
+      errText,
+    });
+    throw new Error(`Sarvam QA agent HTTP ${response.status}: ${errText}`);
+  }
+
+  const json = await response.json() as {
+    choices?: {message?: {content?: string}}[];
+    usage?: {total_tokens?: number; prompt_tokens?: number; completion_tokens?: number};
+  };
+
+  logger.info("[qaAndNaturalize] Sarvam response received", {
+    totalTokens: json.usage?.total_tokens ?? 0,
+    promptTokens: json.usage?.prompt_tokens ?? 0,
+    completionTokens: json.usage?.completion_tokens ?? 0,
+    choices: json.choices?.length ?? 0,
+  });
+
+  const raw = json.choices?.[0]?.message?.content ?? "";
+
+  // Strip markdown fences if present
+  let cleaned = raw.trim();
+  if (cleaned.startsWith("```")) {
+    const firstNewline = cleaned.indexOf("\n");
+    cleaned = firstNewline >= 0 ? cleaned.slice(firstNewline + 1) : cleaned.slice(3);
+  }
+  if (cleaned.endsWith("```")) cleaned = cleaned.slice(0, -3);
+
+  let parsed: {
+    corrected_title?: string;
+    issues?: string[];
+    pages?: {page: number; text: string}[];
+  };
+  try {
+    parsed = JSON.parse(cleaned.trim()) as {
+      corrected_title?: string;
+      issues?: string[];
+      pages?: {page: number; text: string}[];
+    };
+  } catch (parseErr) {
+    logger.error("[qaAndNaturalize] failed to parse Sarvam JSON", {
+      rawLength: raw.length,
+      cleanedLength: cleaned.length,
+      preview: cleaned.slice(0, 400),
+      parseErr,
+    });
+    throw parseErr;
+  }
+
+  // Merge corrected texts back into the original page objects (preserving metadata)
+  const correctedMap = new Map<number, string>(
+    (parsed.pages ?? []).map((p) => [p.page, p.text])
+  );
+  const mergedPages: PageText[] = pages.map((p) => ({
+    ...p,
+    text: correctedMap.has(p.page) ? (correctedMap.get(p.page) ?? p.text) : p.text,
+  }));
+  // Branding pages are always kept as-is
+  brandingPages.forEach((bp) => {
+    const idx = mergedPages.findIndex((p) => p.page === bp.page);
+    if (idx >= 0) mergedPages[idx] = bp;
+  });
+
+  const sarvamTokens = json.usage?.total_tokens ?? 0;
+
+  logger.info("[qaAndNaturalize] completed", {
+    correctedPages: parsed.pages?.length ?? 0,
+    issuesCount: parsed.issues?.length ?? 0,
+    titleChanged: Boolean(parsed.corrected_title && parsed.corrected_title !== storyTitle),
+    totalTokens: sarvamTokens,
+  });
+
+  return {
+    pages: mergedPages,
+    title: parsed.corrected_title ?? storyTitle,
+    issues: parsed.issues ?? [],
+    tokens: sarvamTokens,
+    inputTokens: json.usage?.prompt_tokens,
+    outputTokens: json.usage?.completion_tokens,
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // generateStoryDraft — main onCall handler
 // Runs the three-agent pipeline and returns draft pages synchronously.
 // Also persists the story to Firestore  stories/{storyId}.
@@ -448,6 +659,8 @@ export const generateStoryDraft = onCall<GenerateStoryDraftRequest>(
       pageCount: rawPageCount,
       customIncident = "",
       nativeChildName = "",
+      templateTitle = "",
+      templateDesc = "",
     } = request.data;
 
     if (!profileId || !language || !languageCode || !Array.isArray(interests) || interests.length === 0) {
@@ -459,7 +672,8 @@ export const generateStoryDraft = onCall<GenerateStoryDraftRequest>(
     // ── Fetch and validate child profile ──────────────────────────────────
     const profileSnap = await db.collection("child_profiles").doc(profileId).get();
     if (!profileSnap.exists) throw new HttpsError("not-found", "Child profile not found.");
-    const profile = profileSnap.data()!;
+    const profile = profileSnap.data();
+    if (!profile) throw new HttpsError("not-found", "Child profile data missing.");
     if (profile.user_id !== userId) throw new HttpsError("permission-denied", "Profile does not belong to this user.");
 
     // Use native name when provided (e.g. "अर्जुन"), otherwise English name
@@ -468,13 +682,15 @@ export const generateStoryDraft = onCall<GenerateStoryDraftRequest>(
 
     // ── Read model name from Firestore ────────────────────────────────────
     const modelDoc = await db.collection("models").doc("story_generation_model").get();
-    const modelName: string = (modelDoc.exists && modelDoc.data()?.name) ?
-      modelDoc.data()!.name as string :
+    const modelDocData = modelDoc.data();
+    const modelName: string = (modelDoc.exists && modelDocData?.name) ?
+      modelDocData.name as string :
       "gemini-2.5-flash";
     logger.info(`[generateStoryDraft] using model=${modelName} for userId=${userId}`);
 
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) throw new HttpsError("internal", "GEMINI_API_KEY is not configured.");
+    const sarvamApiKey = process.env.SARVAM_API_KEY ?? "";
 
     const ai = new GoogleGenAI({apiKey});
 
@@ -492,6 +708,8 @@ export const generateStoryDraft = onCall<GenerateStoryDraftRequest>(
       custom_incident: customIncident,
       page_count: pageCount,
       avatar_url: profile.avatar_jpeg_url || profile.avatar_url || "",
+      template_title: templateTitle || null,
+      template_desc: templateDesc || null,
       status: "drafting",
       title: "",
       draft_pages: [],
@@ -511,18 +729,19 @@ export const generateStoryDraft = onCall<GenerateStoryDraftRequest>(
       // === Agent 2: Plan the story ===
       logger.info(`[generateStoryDraft] [${storyId}] step 2/3 — planning story outline`);
       const {outline, tokens: t2} = await planStory(
-        ai, modelName, childName, childAge, themes, languageCode, language, pageCount, customIncident
+        ai, modelName, childName, childAge, themes, languageCode, language, pageCount, customIncident,
+        templateTitle, templateDesc
       );
       totalTokens += t2;
       logger.info(`[generateStoryDraft] [${storyId}] outline title: "${outline.title}"`);
 
       // === Agent 3: Write the story ===
-      logger.info(`[generateStoryDraft] [${storyId}] step 3/3 — writing story`);
-      const {pages: draftPages, tokens: t3} = await writeStory(
+      logger.info(`[generateStoryDraft] [${storyId}] step 3/4 — writing story`);
+      const {pages: rawPages, tokens: t3} = await writeStory(
         ai, modelName, outline, language, childName, childAge, pageCount, customIncident
       );
       totalTokens += t3;
-      logger.info(`[generateStoryDraft] [${storyId}] wrote ${draftPages.length} pages, totalTokens=${totalTokens}`);
+      logger.info(`[generateStoryDraft] [${storyId}] wrote ${rawPages.length} pages, totalTokens=${totalTokens}`);
 
       // Annotate each page with its type from the outline, and inject avatar
       // URL into the branding page so the viewer can render it
@@ -530,12 +749,39 @@ export const generateStoryDraft = onCall<GenerateStoryDraftRequest>(
       const pageTypeMap = new Map<number, string>(
         outline.pages.map((p) => [p.page, p.type])
       );
-      for (const page of draftPages) {
+      for (const page of rawPages) {
         page.page_type = pageTypeMap.get(page.page) ?? "story";
       }
-      const brandingPage = draftPages.find((p) => p.page_type === "branding");
+      const brandingPage = rawPages.find((p) => p.page_type === "branding");
       if (brandingPage && childAvatarUrl) {
         brandingPage.avatar_url = childAvatarUrl;
+      }
+
+      // === Agent 4: QA & Naturalize (Sarvam sarvam-30b) ===
+      let draftPages = rawPages;
+      let finalTitle = outline.title;
+      if (sarvamApiKey) {
+        logger.info(`[generateStoryDraft] [${storyId}] step 4/4 — QA & naturalizing with Sarvam`);
+        try {
+          const qaResult = await qaAndNaturalize(
+            rawPages, language, languageCode, childName, childAge, outline.title, sarvamApiKey
+          );
+          draftPages = qaResult.pages;
+          if (qaResult.title) finalTitle = qaResult.title;
+          if (qaResult.issues.length > 0) {
+            logger.info(`[generateStoryDraft] [${storyId}] QA issues fixed: ${qaResult.issues.join("; ")}`);
+          }
+          logger.info(`[generateStoryDraft] [${storyId}] QA complete, title="${finalTitle}", sarvamTokens=${qaResult.tokens}`);
+          void recordTokenConsumption(userId, "story_qa_naturalize", "sarvam", qaResult.tokens, {
+            input_tokens: qaResult.inputTokens,
+            output_tokens: qaResult.outputTokens,
+          });
+        } catch (qaErr) {
+          // QA is best-effort — fall back to raw Gemini pages if Sarvam fails
+          logger.warn(`[generateStoryDraft] [${storyId}] Sarvam QA failed, using raw pages: ${qaErr}`);
+        }
+      } else {
+        logger.info(`[generateStoryDraft] [${storyId}] SARVAM_API_KEY not set — skipping QA step`);
       }
 
       // Record token consumption
@@ -544,8 +790,8 @@ export const generateStoryDraft = onCall<GenerateStoryDraftRequest>(
       // Persist completed draft
       await storyRef.update({
         status: "draft_ready",
-        title: outline.title,
-        title_english: outline.titleEnglish ?? outline.title,
+        title: finalTitle,
+        title_english: outline.titleEnglish ?? finalTitle,
         synopsis: outline.synopsis ?? "",
         moral: outline.moral ?? "",
         draft_pages: draftPages,
@@ -554,8 +800,8 @@ export const generateStoryDraft = onCall<GenerateStoryDraftRequest>(
 
       return {
         storyId,
-        title: outline.title,
-        titleEnglish: outline.titleEnglish ?? outline.title,
+        title: finalTitle,
+        titleEnglish: outline.titleEnglish ?? finalTitle,
         draftPages,
         status: "draft_ready",
       };
@@ -563,7 +809,7 @@ export const generateStoryDraft = onCall<GenerateStoryDraftRequest>(
       await storyRef.update({
         status: "draft_failed",
         updated_at: FieldValue.serverTimestamp(),
-      }).catch((_e: unknown) => {/* best-effort status update */});
+      }).catch(() => {/* best-effort status update */});
       logger.error(`[generateStoryDraft] [${storyId}] failed`, err);
       if (err instanceof HttpsError) throw err;
       throw new HttpsError("internal", "Story generation failed. Please try again.");

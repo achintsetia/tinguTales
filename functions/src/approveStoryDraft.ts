@@ -32,7 +32,8 @@ export const approveStoryDraft = onCall<ApproveStoryDraftRequest>(
     const storySnap = await storyRef.get();
 
     if (!storySnap.exists) throw new HttpsError("not-found", "Story not found.");
-    const story = storySnap.data()!;
+    const story = storySnap.data();
+    if (!story) throw new HttpsError("not-found", "Story data missing.");
     if (story.user_id !== userId) throw new HttpsError("permission-denied", "Story does not belong to this user.");
     if (story.status !== "draft_ready") {
       throw new HttpsError("failed-precondition", `Story must be in draft_ready state (current: ${story.status}).`);
