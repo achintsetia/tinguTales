@@ -25,6 +25,7 @@ interface PageImageTaskPayload {
   userId: string;
   avatarUrl: string; // GCS path, e.g. userId/profileId/avatar/avatar.jpg
   characterCardJson: string;
+  commonContextEntitiesJson: string; // JSON array of recurring entities
   supportingCharactersJson: string; // JSON array of SupportingCharacter
   totalPages: number;
 }
@@ -82,6 +83,21 @@ function buildIllustrationPrompt(
     }
   })();
 
+  const commonContextEntities: Array<{
+    name: string;
+    category: string;
+    role: string;
+    appearance: string;
+    consistency_notes?: string;
+  }> = (() => {
+    try {
+      const parsed = JSON.parse(payload.commonContextEntitiesJson);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  })();
+
   const characterDesc = card ? (
     `The protagonist is a ${card.gender || "child"} with ${card.skin_tone} skin tone. ` +
     `Face: ${card.face}. Hair: ${card.hair}. ` +
@@ -97,12 +113,22 @@ function buildIllustrationPrompt(
     " CRITICAL: Never change the appearance of any supporting character between pages. " :
     "";
 
+  const commonContextDesc = commonContextEntities.length > 0 ?
+    "COMMON CONTEXT ENTITIES — keep recurring people/animals/vehicles/objects visually identical when they appear: " +
+    commonContextEntities.map((entity) =>
+      `${entity.name} [${entity.category}] (${entity.role}): ${entity.appearance}` +
+      (entity.consistency_notes ? ` Consistency: ${entity.consistency_notes}` : "")
+    ).join(" | ") +
+    " CRITICAL: Do not change colors, structure, clothing, markings, or defining traits of recurring entities across pages. " :
+    "";
+
   if (payload.pageType === "cover") {
     const title = payload.coverTitle || "";
     const subtitle = payload.coverSubtitle || "";
     return (
       "Create a beautiful children's storybook COVER illustration in a warm, vibrant Indian style. " +
       `${characterDesc} ` +
+      `${commonContextDesc}` +
       `${supportingCharDesc}` +
       `Scene: ${payload.scenePrompt} ` +
       "Make it feel magical, joyful, and inviting. Full 3:4 portrait format. " +
@@ -146,6 +172,7 @@ function buildIllustrationPrompt(
   return (
     "Create a vibrant children's storybook interior PAGE illustration in warm Indian style. " +
     `${characterDesc} ` +
+      `${commonContextDesc}` +
     `${supportingCharDesc}` +
     `Scene: ${payload.scenePrompt} ` +
     "Full 3:4 portrait format, bright and joyful colours. " +
@@ -332,8 +359,23 @@ export const enqueuePageImageTask = onDocumentCreated(
     const profileId: string = story.profile_id ?? "";
     const avatarUrl = `${userId}/${profileId}/avatar/avatar.jpg`;
     const characterCardJson = JSON.stringify(story.character_card ?? {});
+    const commonContextEntitiesJson = JSON.stringify(story.common_context_entities ?? []);
     const supportingCharactersJson = JSON.stringify(story.supporting_characters ?? []);
     const totalPages: number = story.page_count ?? 8;
+    const commonContextEntities: Array<{name?: string; category?: string}> =
+      Array.isArray(story.common_context_entities) ? story.common_context_entities : [];
+
+    logger.info("[enqueuePageImageTask] loaded story context", {
+      storyId,
+      pageId,
+      page: data.page,
+      commonContextEntitiesCount: commonContextEntities.length,
+      commonContextEntityNames: commonContextEntities
+        .map((entity) => entity.name)
+        .filter(Boolean)
+        .slice(0, 10),
+      supportingCharactersCount: Array.isArray(story.supporting_characters) ? story.supporting_characters.length : 0,
+    });
 
     const payload: PageImageTaskPayload = {
       storyId,
@@ -347,6 +389,7 @@ export const enqueuePageImageTask = onDocumentCreated(
       userId,
       avatarUrl,
       characterCardJson,
+      commonContextEntitiesJson,
       supportingCharactersJson,
       totalPages,
     };
@@ -429,6 +472,26 @@ export const processPageImage = onTaskDispatched<PageImageTaskPayload>(
       } catch (err) {
         logger.warn(`[processPageImage] could not load avatar for page ${pageIndex}: ${err}`);
       }
+
+      const commonContextEntities: Array<{name?: string; category?: string}> = (() => {
+        try {
+          const parsed = JSON.parse(request.data.commonContextEntitiesJson);
+          return Array.isArray(parsed) ? parsed : [];
+        } catch {
+          return [];
+        }
+      })();
+      logger.info("[processPageImage] common context entities for page", {
+        storyId,
+        pageId,
+        pageIndex,
+        pageType: request.data.pageType,
+        count: commonContextEntities.length,
+        names: commonContextEntities
+          .map((entity) => entity.name)
+          .filter(Boolean)
+          .slice(0, 10),
+      });
 
       // Build the illustration prompt
       const illustrationPrompt = buildIllustrationPrompt(request.data);

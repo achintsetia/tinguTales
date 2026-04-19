@@ -19,10 +19,12 @@ export interface CharacterCard {
   default_outfit: string;
 }
 
-export interface SupportingCharacter {
+export interface StoryEntityContext {
   name: string;
-  role: string; // e.g. "grandmother", "best friend", "teacher"
+  category: "person" | "animal" | "vehicle" | "object" | "place" | "other";
+  role: string; // e.g. "grandmother", "best friend", "family dog", "school bus"
   appearance: string; // full prose description for consistent illustration
+  consistency_notes: string; // specific constraints: colour, structure, style, repeated details
 }
 
 interface SceneData {
@@ -172,51 +174,55 @@ async function describeAvatarAsCharacterCard(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Agent B — Extract and describe supporting characters from the story pages
+// Agent B — Build common context entities from the story pages
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Reads all story pages and identifies supporting characters other than the main child,
- * producing a consistent visual description for each that will be embedded in scene prompts.
+ * Reads all story pages and identifies recurring visual entities other than the main child,
+ * including people, animals, vehicles, objects, and places. Produces consistent
+ * visual descriptions so page illustrations stay coherent throughout the story.
  * @param {GoogleGenAI} ai - GoogleGenAI instance.
  * @param {string} model - Gemini model name.
  * @param {string} childName - The main child protagonist's name (to exclude).
  * @param {string} synopsis - Story synopsis.
  * @param {Array<object>} draftPages - Draft pages with text.
- * @return {Promise<object>} Object with supporting characters array and total token count.
+ * @return {Promise<object>} Object with common entity array and total token count.
  */
-async function extractSupportingCharacters(
+async function extractCommonContextEntities(
   ai: GoogleGenAI,
   model: string,
   childName: string,
   synopsis: string,
   draftPages: {page: number; text: string; page_type?: string}[]
-): Promise<{characters: SupportingCharacter[]; tokens: number}> {
+): Promise<{entities: StoryEntityContext[]; tokens: number}> {
   const storyText = draftPages
     .filter((p) => p.page_type !== "back_cover" && p.page_type !== "cover")
     .map((p) => `[Page ${p.page}]: ${p.text}`)
     .join("\n");
 
-  if (!storyText.trim()) return {characters: [], tokens: 0};
+  if (!storyText.trim()) return {entities: [], tokens: 0};
 
   const prompt =
     `You are reading a children's storybook. The main character is "${childName}".\n\n` +
     `Story synopsis: ${synopsis}\n\n` +
     "Story pages:\n" + storyText + "\n\n" +
-    "Identify ALL named or clearly described supporting characters who appear in the story " +
-    "(exclude the main child character whose name is \"" + childName + "\").\n" +
-    "For each supporting character, provide a DETAILED and SPECIFIC visual description " +
-    "that an illustrator can use to draw them IDENTICALLY on every page they appear.\n\n" +
-    "Include age, gender, skin tone, hair, face features, clothing style, and any distinctive attributes.\n" +
-    "If a character is not physically described in the text, infer a culturally appropriate " +
-    "Indian appearance consistent with their role (e.g. grandmother = elderly Indian woman).\n\n" +
-    "Return ONLY a JSON array (empty if no supporting characters):\n" +
+    "Identify recurring visual entities that should stay consistent across pages.\n" +
+    "Include not just people, but also animals, pets, vehicles, frequently used objects, and notable places.\n" +
+    "Exclude the main child protagonist whose name is \"" + childName + "\".\n\n" +
+    "For each entity, provide a DETAILED and SPECIFIC visual description and strict consistency notes.\n" +
+    "For people: include age range, skin tone, face features, hair, top/bottom clothing, footwear, accessories.\n" +
+    "For animals: include species/breed, fur/skin/feather colour, markings, collar/accessories, body build.\n" +
+    "For vehicles/objects: include exact colour palette, structure/shape, material feel, and distinctive details.\n" +
+    "For places: include architectural style, colours, motifs, recurring decor elements.\n" +
+    "If details are missing, infer culturally appropriate Indian defaults and keep them plausible.\n\n" +
+    "Return ONLY a JSON array (empty if no recurring entities):\n" +
     "[\n" +
     "  {\n" +
-    "    \"name\": \"character name as it appears in the story\",\n" +
-    "    \"role\": \"their role e.g. grandmother, best friend, teacher, shopkeeper\",\n" +
-    "    \"appearance\": \"full prose description: age, gender, skin tone, face, hair, " +
-    "typical clothing, any distinctive features\"\n" +
+    "    \"name\": \"entity name as it appears in the story\",\n" +
+    "    \"category\": \"person|animal|vehicle|object|place|other\",\n" +
+    "    \"role\": \"e.g. grandmother, best friend, pet dog, school bus, toy train\",\n" +
+    "    \"appearance\": \"full prose description with visual specifics\",\n" +
+    "    \"consistency_notes\": \"strict do-not-change traits across pages\"\n" +
     "  }\n" +
     "]";
 
@@ -225,9 +231,9 @@ async function extractSupportingCharacters(
     contents: [{role: "user", parts: [{text: prompt}]}],
     config: {
       systemInstruction:
-        "You are a character designer for Indian children's picture books. " +
-        "Identify supporting characters from story text and describe them with enough " +
-        "detail that an illustrator can draw them consistently on every page. " +
+        "You are a visual continuity director for Indian children's picture books. " +
+        "Extract all recurring entities that must remain visually consistent across pages. " +
+        "Describe each with enough detail for consistent illustration. " +
         "Return only valid JSON.",
     },
   });
@@ -238,12 +244,12 @@ async function extractSupportingCharacters(
   try {
     const parsed = parseGeminiJson(text);
     if (Array.isArray(parsed)) {
-      return {characters: parsed as SupportingCharacter[], tokens};
+      return {entities: parsed as StoryEntityContext[], tokens};
     }
   } catch {
-    logger.warn("[generateScenes] supporting character parse failed — using empty list");
+    logger.warn("[generateScenes] common context parse failed — using empty list");
   }
-  return {characters: [], tokens};
+  return {entities: [], tokens};
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -271,7 +277,7 @@ interface RawSceneItem {
  * @param {Array<object>} draftPages - Draft page objects (page, text, page_type).
  * @param {CharacterCard} card - Structured character card from avatar description.
  * @param {number} numPages - Total page count including cover and branding.
- * @param {Array<object>} supportingCharacters - Supporting characters with consistent appearance descriptions.
+ * @param {Array<object>} commonContextEntities - Story entities with consistent appearance descriptions.
  * @return {Promise<object>} Object with scene items array and total token count.
  */
 async function generateScenePrompts(
@@ -286,7 +292,7 @@ async function generateScenePrompts(
   draftPages: {page: number; text: string; page_type?: string}[],
   card: CharacterCard,
   numPages: number,
-  supportingCharacters: SupportingCharacter[]
+  commonContextEntities: StoryEntityContext[]
 ): Promise<{items: RawSceneItem[]; tokens: number}> {
   const backCoverIndex = numPages - 1;
   const storyPageRange = numPages > 3 ? `1–${numPages - 2}` : "1";
@@ -317,13 +323,14 @@ async function generateScenePrompts(
     `Outfit: ${card.default_outfit}.`,
   ].join("  ");
 
-  const supportingCharactersSection = supportingCharacters.length > 0 ?
-    "SUPPORTING CHARACTERS — draw each IDENTICALLY on EVERY page they appear:\n" +
-    supportingCharacters.map((sc, i) =>
-      `${i + 1}. ${sc.name} (${sc.role}): ${sc.appearance}`
+  const commonContextSection = commonContextEntities.length > 0 ?
+    "COMMON CONTEXT ENTITIES — maintain strict consistency across pages:\n" +
+    commonContextEntities.map((entity, i) =>
+      `${i + 1}. ${entity.name} [${entity.category}] (${entity.role}): ` +
+      `${entity.appearance}. Consistency: ${entity.consistency_notes}`
     ).join("\n") +
-    "\nFor each page: if a supporting character appears in the story text, describe them explicitly " +
-    "using the appearance above. Never change their look between pages.\n\n" :
+    "\nFor each page: if an entity appears in the story text, reference these details explicitly. " +
+    "Never change recurring appearance traits between pages.\n\n" :
     "";
 
   const exampleJson = JSON.stringify(
@@ -349,7 +356,7 @@ async function generateScenePrompts(
     `4. Outfit: ${card.default_outfit} — keep this EXACT outfit on all pages; do NOT ` +
     "change clothing even for festivals or special events.\n" +
     `5. Accessories: ${card.accessories} — always present, never swapped.\n\n` +
-    supportingCharactersSection +
+    commonContextSection +
     "PAGE-SPECIFIC RULES:\n" +
     `- Page 0 (COVER): ${childName} as the HERO — large, centred portrait. ` +
     "Vibrant Indian storybook motifs (marigolds, rangoli, golden sunrise). " +
@@ -481,19 +488,46 @@ async function runScenePipeline(storyId: string): Promise<void> {
     logger.warn(`[generateScenes] avatar describe failed (using defaults): ${avatarErr}`);
   }
 
-  // ── Step 2: Extract supporting characters from story text ────────────────
-  logger.info("[generateScenes] extracting supporting characters");
-  let supportingCharacters: SupportingCharacter[] = [];
+  // ── Step 2: Build common context entities from story text ─────────────────
+  logger.info("[generateScenes] extracting common context entities");
+  let commonContextEntities: StoryEntityContext[] = [];
   try {
-    const {characters, tokens: tSC} = await withRetry(() =>
-      extractSupportingCharacters(ai, modelName, childName, synopsis, draftPages)
+    const {entities, tokens: tCCE} = await withRetry(() =>
+      extractCommonContextEntities(ai, modelName, childName, synopsis, draftPages)
     );
-    supportingCharacters = characters;
-    totalTokens += tSC;
-    logger.info(`[generateScenes] found ${supportingCharacters.length} supporting character(s): ${supportingCharacters.map((c) => c.name).join(", ")}`);
+    commonContextEntities = entities;
+    totalTokens += tCCE;
+    const categoryCounts = commonContextEntities.reduce<Record<string, number>>((acc, entity) => {
+      const key = entity.category || "other";
+      acc[key] = (acc[key] ?? 0) + 1;
+      return acc;
+    }, {});
+    const sampleEntities = commonContextEntities.slice(0, 5).map((entity) => ({
+      name: entity.name,
+      category: entity.category,
+      role: entity.role,
+    }));
+    logger.info(
+      `[generateScenes] found ${commonContextEntities.length} common context entit(y/ies): ` +
+      `${commonContextEntities.map((e) => e.name).join(", ")}`
+    );
+    logger.info("[generateScenes] common context entity breakdown", {
+      total: commonContextEntities.length,
+      categoryCounts,
+      sampleEntities,
+    });
   } catch (scErr) {
-    logger.warn(`[generateScenes] supporting character extraction failed (skipping): ${scErr}`);
+    logger.warn(`[generateScenes] common context extraction failed (skipping): ${scErr}`);
   }
+
+  // Backward compatibility: keep person entities in supporting_characters.
+  const supportingCharacters = commonContextEntities
+    .filter((e) => e.category === "person")
+    .map((e) => ({
+      name: e.name,
+      role: e.role,
+      appearance: e.appearance,
+    }));
 
   // ── Step 3: Generate scene prompts (with retry) ───────────────────────────
   logger.info(`[generateScenes] generating scene prompts for ${numPages} pages`);
@@ -501,7 +535,7 @@ async function runScenePipeline(storyId: string): Promise<void> {
     generateScenePrompts(
       ai, modelName, storyTitle, titleEnglish, synopsis,
       childName, childAge, childGender, draftPages, characterCard, numPages,
-      supportingCharacters
+      commonContextEntities
     )
   );
   totalTokens += t2;
@@ -544,12 +578,19 @@ async function runScenePipeline(storyId: string): Promise<void> {
 
   void recordTokenConsumption(userId, "scene_generation", "gemini", totalTokens);
 
-  // ── Step 5: Save character card + supporting characters + advance to image generation ──
+  // ── Step 5: Save character card + common context + advance to image generation ──
   await storyRef.update({
     character_card: characterCard,
+    common_context_entities: commonContextEntities,
     supporting_characters: supportingCharacters,
     status: "generating_images",
     updated_at: FieldValue.serverTimestamp(),
+  });
+
+  logger.info("[generateScenes] persisted context metadata", {
+    storyId,
+    commonContextEntitiesCount: commonContextEntities.length,
+    supportingCharactersCount: supportingCharacters.length,
   });
 
   logger.info(`[generateScenes] complete — storyId=${storyId} status=generating_images`);
