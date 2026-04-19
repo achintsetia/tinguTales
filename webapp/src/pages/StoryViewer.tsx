@@ -351,7 +351,7 @@ export default function StoryViewer() {
         </Dialog>
 
         <p className="text-xs text-[#1E1B4B]/25 mt-8 text-center">
-          This usually takes 2–3 minutes. Sit tight!
+            This usually takes 10-15 minutes. Sit tight!
         </p>
       </div>
     );

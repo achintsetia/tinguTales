@@ -89,6 +89,11 @@ service cloud.firestore {
       allow read, write: if isAdmin();
     }
 
+    // Failed image generation queue — admin panel access only
+    match /_failed_image_generation/{docId} {
+      allow read, write: if isAdmin();
+    }
+
     // All other collections are locked down by default
     match /{document=**} {
       allow read, write: if false;

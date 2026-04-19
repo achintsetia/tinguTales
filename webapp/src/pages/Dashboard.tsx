@@ -307,14 +307,6 @@ export default function Dashboard() {
                   {user?.email}
                 </div>
                 <DropdownMenuSeparator className="bg-[#F3E8FF]" />
-                <DropdownMenuItem
-                  data-testid="btn-payment-history"
-                  onClick={() => navigate("/payments")}
-                  className="rounded-xl cursor-pointer gap-2 py-2.5 text-[#1E1B4B] focus:bg-[#FF9F1C]/10 focus:text-[#1E1B4B]"
-                >
-                  <Receipt className="w-4 h-4 text-[#FF9F1C]" strokeWidth={2} />
-                  Payment History
-                </DropdownMenuItem>
                 {user?.is_admin && (
                   <DropdownMenuItem
                     data-testid="btn-admin-panel"

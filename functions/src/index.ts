@@ -18,7 +18,7 @@ export {generateScenes, retrySceneGeneration} from "./generateScenes.js";
 export {enqueuePageImageTask, processPageImage} from "./pageImageQueue.js";
 export {generateStorybookPdf} from "./pdfGeneration.js";
 export {getAdminCostReport} from "./getAdminCostReport.js";
-export {adminRetryPageImage, adminRetryPdf} from "./adminRetryTasks.js";
+export {adminRetryPageImage, adminRetryPdf, adminRetryFailedImageGeneration} from "./adminRetryTasks.js";
 export {redeemDiscountCoupon} from "./discountCoupons.js";
 export {deleteStory} from "./deleteStory.js";
 export {

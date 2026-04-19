@@ -15,6 +15,18 @@ import {
   Activity, Undo2, Bot, ChevronDown, ChevronUp, IndianRupee, User, Baby, Search
 } from "lucide-react";
 
+const ADMIN_TAB_STORAGE_KEY = "admin_active_tab";
+const ADMIN_TAB_IDS = [
+  "overview",
+  "users",
+  "stories",
+  "failed-image-generation",
+  "whitelist",
+  "coupons",
+  "payments",
+  "costs",
+] as const;
+
 export default function AdminPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -44,6 +56,11 @@ export default function AdminPage() {
   const [userSearch, setUserSearch] = useState("");
   const [loadingUsers, setLoadingUsers] = useState(false);
 
+  // Failed image generation tab state
+  const [failedImageItems, setFailedImageItems] = useState<any[]>([]);
+  const [loadingFailedImages, setLoadingFailedImages] = useState(false);
+  const [retryingFailedDocId, setRetryingFailedDocId] = useState<string | null>(null);
+
   // Coupons tab state
   const [coupons, setCoupons] = useState<any[]>([]);
   const [loadingCoupons, setLoadingCoupons] = useState(false);
@@ -54,36 +71,46 @@ export default function AdminPage() {
   const [deletingCoupon, setDeletingCoupon] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!user?.is_admin) {
+    // Wait until auth state is resolved to avoid redirecting admins during initial load.
+    if (!user) return;
+    if (!user.is_admin) {
       navigate("/dashboard", { replace: true });
       return;
     }
     fetchAll();
-  }, [user, navigate]);
+  }, [user?.id, user?.is_admin, navigate]);
 
   const fetchAll = async () => {
     setLoading(true);
     try {
-      const [storiesSnap, usersSnap, paymentsSnap, pricingSnap, childProfilesSnap] = await Promise.all([
+      const [storiesRes, usersRes, paymentsRes, pricingRes, childProfilesRes, failedImageRes] = await Promise.allSettled([
         getDocs(collection(db, "stories")),
         getDocs(collection(db, "user_profile")),
         getDocs(query(collection(db, "payments"), orderBy("created_at", "desc"))),
         getDoc(doc(db, "pricing", "public")),
         getDocs(collection(db, "child_profiles")),
+        getDocs(collection(db, "_failed_image_generation")),
       ]);
-      const allStories = storiesSnap.docs.map((d) => d.data());
-      const storyRows = storiesSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
-      const userRows = usersSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+
+      const storiesSnap = storiesRes.status === "fulfilled" ? storiesRes.value : null;
+      const usersSnap = usersRes.status === "fulfilled" ? usersRes.value : null;
+      const paymentsSnap = paymentsRes.status === "fulfilled" ? paymentsRes.value : null;
+      const childProfilesSnap = childProfilesRes.status === "fulfilled" ? childProfilesRes.value : null;
+      const failedImageSnap = failedImageRes.status === "fulfilled" ? failedImageRes.value : null;
+
+      const allStories = storiesSnap ? storiesSnap.docs.map((d) => d.data()) : [];
+      const storyRows = storiesSnap ? storiesSnap.docs.map((d) => ({ id: d.id, ...d.data() })) : [];
+      const userRows = usersSnap ? usersSnap.docs.map((d) => ({ id: d.id, ...d.data() })) : [];
       const emailMap = userRows.reduce((acc: Record<string, string>, u: any) => {
         acc[u.id] = u.email || "";
         return acc;
       }, {});
-      const allPayments = paymentsSnap.docs.map((d) => d.data());
+      const allPayments = paymentsSnap ? paymentsSnap.docs.map((d) => d.data()) : [];
       const totalRevenue = allPayments
         .filter((p) => p.status === "paid")
         .reduce((sum, p) => sum + (p.amount || 0), 0);
       setStats({
-        total_users: usersSnap.size,
+        total_users: usersSnap?.size ?? 0,
         total_stories: allStories.length,
         completed_stories: allStories.filter((s) => s.status === "completed").length,
         total_revenue: totalRevenue,
@@ -99,17 +126,73 @@ export default function AdminPage() {
       );
       setUserProfiles(sortedUsers);
       const cpMap: Record<string, any[]> = {};
-      childProfilesSnap.docs.forEach((d) => {
-        const cp = { id: d.id, ...d.data() };
-        const uid = (cp as any).user_id || "";
-        if (!cpMap[uid]) cpMap[uid] = [];
-        cpMap[uid].push(cp);
-      });
+      if (childProfilesSnap) {
+        childProfilesSnap.docs.forEach((d) => {
+          const cp = { id: d.id, ...d.data() };
+          const uid = (cp as any).user_id || "";
+          if (!cpMap[uid]) cpMap[uid] = [];
+          cpMap[uid].push(cp);
+        });
+      }
       setChildProfilesByUser(cpMap);
+
+      const failedRows = failedImageSnap ? failedImageSnap.docs
+        .map((d) => ({id: d.id, ...d.data()}))
+        .sort((a: any, b: any) => {
+          const aTs = toDateValue(a.last_failed_at)?.getTime() ?? 0;
+          const bTs = toDateValue(b.last_failed_at)?.getTime() ?? 0;
+          return bTs - aTs;
+        }) : [];
+      setFailedImageItems(failedRows);
+
+      const hasAnyFailure =
+        storiesRes.status === "rejected" ||
+        usersRes.status === "rejected" ||
+        paymentsRes.status === "rejected" ||
+        pricingRes.status === "rejected" ||
+        childProfilesRes.status === "rejected" ||
+        failedImageRes.status === "rejected";
+      if (hasAnyFailure) {
+        toast.error("Some admin sections could not be loaded. Partial data shown.");
+      }
     } catch (e) {
       toast.error("Failed to load admin data");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchFailedImageGenerations = async () => {
+    setLoadingFailedImages(true);
+    try {
+      const snap = await getDocs(collection(db, "_failed_image_generation"));
+      const rows = snap.docs
+        .map((d) => ({id: d.id, ...d.data()}))
+        .sort((a: any, b: any) => {
+          const aTs = toDateValue(a.last_failed_at)?.getTime() ?? 0;
+          const bTs = toDateValue(b.last_failed_at)?.getTime() ?? 0;
+          return bTs - aTs;
+        });
+      setFailedImageItems(rows);
+    } catch {
+      toast.error("Failed to load failed image generation items");
+    } finally {
+      setLoadingFailedImages(false);
+    }
+  };
+
+  const handleRetryFailedImage = async (failedDocId: string) => {
+    setRetryingFailedDocId(failedDocId);
+    try {
+      const fns = getFunctions(undefined, "asia-south1");
+      const retryFn = httpsCallable<{failedDocId: string}, {status: string}>(fns, "adminRetryFailedImageGeneration");
+      await retryFn({failedDocId});
+      toast.success("Failed image task re-queued");
+      await fetchFailedImageGenerations();
+    } catch (e: any) {
+      toast.error(e?.message || "Retry failed");
+    } finally {
+      setRetryingFailedDocId(null);
     }
   };
 
@@ -135,11 +218,44 @@ export default function AdminPage() {
     { id: "overview", label: "Overview" },
     { id: "users", label: "Users" },
     { id: "stories", label: "Stories" },
+    { id: "failed-image-generation", label: "Failed Image Generation" },
     { id: "whitelist", label: "Whitelist" },
     { id: "coupons", label: "Coupons" },
     { id: "payments", label: "Payments" },
     { id: "costs", label: "Costs" },
   ];
+
+  const switchTab = (tabId: string) => {
+    setTab(tabId);
+    if (tabId === "costs" && !costReport) fetchCosts();
+    if (tabId === "whitelist") fetchWhitelistData();
+    if (tabId === "coupons") fetchCoupons();
+    if (tabId === "failed-image-generation") fetchFailedImageGenerations();
+  };
+
+  useEffect(() => {
+    if (!user?.is_admin) return;
+    const storageKey = `${ADMIN_TAB_STORAGE_KEY}:${user.id || "unknown"}`;
+    try {
+      const savedTab = localStorage.getItem(storageKey) || "overview";
+      if (ADMIN_TAB_IDS.includes(savedTab as typeof ADMIN_TAB_IDS[number])) {
+        setTab(savedTab);
+      }
+    } catch {
+      // Some browsers/privacy modes can block localStorage access.
+      setTab("overview");
+    }
+  }, [user?.id, user?.is_admin]);
+
+  useEffect(() => {
+    if (!user?.is_admin) return;
+    const storageKey = `${ADMIN_TAB_STORAGE_KEY}:${user.id || "unknown"}`;
+    try {
+      localStorage.setItem(storageKey, tab);
+    } catch {
+      // Ignore storage write failures.
+    }
+  }, [tab, user?.id, user?.is_admin]);
 
   const toDateValue = (raw: any): Date | null => {
     if (!raw) return null;
@@ -168,8 +284,22 @@ export default function AdminPage() {
     return d ? d.toLocaleString("en-IN", {dateStyle: "short", timeStyle: "short"}) : "";
   };
 
-  const generatedStories = stories
-    .filter((s: any) => s.status === "completed" || !!s.pdf_url)
+  const visibleStories = stories
+    .filter((s: any) => {
+      const status = String(s.status || "");
+      return (
+        !!s.pdf_url ||
+        [
+          "approved",
+          "generating_scenes",
+          "generating_images",
+          "creating_pdf",
+          "scenes_failed",
+          "failed",
+          "completed",
+        ].includes(status)
+      );
+    })
     .sort((a: any, b: any) => {
       const aTs = toDateValue(a.created_at)?.getTime() ?? 0;
       const bTs = toDateValue(b.created_at)?.getTime() ?? 0;
@@ -406,6 +536,7 @@ export default function AdminPage() {
     generating_scenes: "bg-[#FF9F1C]/15 text-[#FF9F1C]",
     generating_images: "bg-[#FF9F1C]/15 text-[#FF9F1C]",
     creating_pdf: "bg-[#FF9F1C]/15 text-[#FF9F1C]",
+    completed: "bg-[#2A9D8F]/15 text-[#2A9D8F]",
     scenes_failed: "bg-[#E76F51]/15 text-[#E76F51]",
     failed: "bg-[#E76F51]/15 text-[#E76F51]",
   };
@@ -445,42 +576,55 @@ export default function AdminPage() {
       </nav>
 
       <div className="max-w-7xl mx-auto px-6 py-8">
-        {/* Tabs */}
-        <div className="flex gap-2 mb-8">
-          {TABS.map((t) => (
-            <button
-              key={t.id}
-              data-testid={`admin-tab-${t.id}`}
-              onClick={() => {
-                setTab(t.id);
-                if (t.id === "costs" && !costReport) fetchCosts();
-                if (t.id === "whitelist") fetchWhitelistData();
-                if (t.id === "coupons") fetchCoupons();
-              }}
-              className={`rounded-full px-5 py-2.5 text-sm font-semibold transition-all ${
-                tab === t.id
-                  ? "bg-[#1E1B4B] text-white"
-                  : "bg-white text-[#1E1B4B]/60 border-2 border-[#F3E8FF] hover:border-[#1E1B4B]/20"
-              }`}
-            >
-              {t.label}
-            </button>
-          ))}
-          <button
-            onClick={() => navigate("/admin/models")}
-            className="rounded-full px-5 py-2.5 text-sm font-semibold transition-all bg-white text-[#3730A3]/70 border-2 border-[#F3E8FF] hover:border-[#3730A3]/30 flex items-center gap-1.5"
-          >
-            <Bot className="w-4 h-4" strokeWidth={2.5} />
-            Models
-          </button>
-          <button
-            onClick={() => navigate("/admin/pricing")}
-            className="rounded-full px-5 py-2.5 text-sm font-semibold transition-all bg-white text-[#FF9F1C]/80 border-2 border-[#F3E8FF] hover:border-[#FF9F1C]/40 flex items-center gap-1.5"
-          >
-            <IndianRupee className="w-4 h-4" strokeWidth={2.5} />
-            Pricing
-          </button>
-        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-[260px_minmax(0,1fr)] gap-6">
+          {/* Sidebar */}
+          <aside className="lg:sticky lg:top-24 h-fit">
+            <Card className="rounded-2xl border-2 border-[#F3E8FF]">
+              <CardContent className="p-3">
+                <p className="text-xs font-bold text-[#1E1B4B]/40 uppercase tracking-wider px-2 py-1 mb-1">
+                  Admin Sections
+                </p>
+                <div className="space-y-1">
+                  {TABS.map((t) => (
+                    <button
+                      key={t.id}
+                      data-testid={`admin-tab-${t.id}`}
+                      onClick={() => switchTab(t.id)}
+                      className={`w-full text-left rounded-xl px-3 py-2.5 text-sm font-semibold transition-all ${
+                        tab === t.id
+                          ? "bg-[#1E1B4B] text-white"
+                          : "text-[#1E1B4B]/70 hover:bg-[#F3E8FF]/60"
+                      }`}
+                    >
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="h-px bg-[#F3E8FF] my-3" />
+
+                <div className="space-y-1">
+                  <button
+                    onClick={() => navigate("/admin/models")}
+                    className="w-full rounded-xl px-3 py-2.5 text-sm font-semibold transition-all text-[#3730A3]/80 hover:bg-[#3730A3]/10 flex items-center gap-2"
+                  >
+                    <Bot className="w-4 h-4" strokeWidth={2.5} />
+                    Models
+                  </button>
+                  <button
+                    onClick={() => navigate("/admin/pricing")}
+                    className="w-full rounded-xl px-3 py-2.5 text-sm font-semibold transition-all text-[#FF9F1C]/90 hover:bg-[#FF9F1C]/10 flex items-center gap-2"
+                  >
+                    <IndianRupee className="w-4 h-4" strokeWidth={2.5} />
+                    Pricing
+                  </button>
+                </div>
+              </CardContent>
+            </Card>
+          </aside>
+
+          {/* Content */}
+          <div>
 
         {/* Overview Tab */}
         {tab === "overview" && stats && (
@@ -747,12 +891,12 @@ export default function AdminPage() {
         {/* Stories Tab */}
         {tab === "stories" && (
           <div data-testid="admin-stories">
-            <p className="text-sm text-[#1E1B4B]/50 mb-4">{generatedStories.length} generated story(s)</p>
+            <p className="text-sm text-[#1E1B4B]/50 mb-4">{visibleStories.length} story(s) including in-progress</p>
             <div className="space-y-2">
-              {generatedStories.length === 0 ? (
-                <p className="text-center py-12 text-[#1E1B4B]/40">No generated stories yet</p>
+              {visibleStories.length === 0 ? (
+                <p className="text-center py-12 text-[#1E1B4B]/40">No stories found in progress or completed states</p>
               ) : (
-                generatedStories.map((s: any) => (
+                visibleStories.map((s: any) => (
                   <div key={s.id} className="flex items-center gap-3 p-4 rounded-xl bg-white border-2 border-[#F3E8FF]">
                     <div className="w-14 h-18 rounded-lg overflow-hidden bg-gradient-to-br from-[#3730A3]/10 to-[#FF9F1C]/10 flex-shrink-0">
                       {getStoryCoverThumbnail(s) ? (
@@ -795,6 +939,69 @@ export default function AdminPage() {
                 ))
               )}
             </div>
+          </div>
+        )}
+
+        {/* Failed Image Generation Tab */}
+        {tab === "failed-image-generation" && (
+          <div data-testid="admin-failed-image-generation">
+            <div className="flex items-center justify-between mb-4">
+              <p className="text-sm text-[#1E1B4B]/50">{failedImageItems.length} failed item(s)</p>
+              <Button
+                variant="outline"
+                onClick={fetchFailedImageGenerations}
+                disabled={loadingFailedImages}
+                className="rounded-full border-[#F3E8FF]"
+              >
+                <RefreshCw className={`w-4 h-4 mr-2 ${loadingFailedImages ? "animate-spin" : ""}`} strokeWidth={2} />
+                Refresh
+              </Button>
+            </div>
+
+            {loadingFailedImages ? (
+              <div className="flex items-center justify-center py-10 text-[#1E1B4B]/40">
+                <RefreshCw className="w-5 h-5 animate-spin mr-2" />
+                Loading failed items…
+              </div>
+            ) : failedImageItems.length === 0 ? (
+              <p className="text-center py-10 text-[#1E1B4B]/40">No failed image generation items</p>
+            ) : (
+              <div className="space-y-2">
+                {failedImageItems.map((item: any) => (
+                  <Card key={item.id} className="rounded-2xl border-2 border-[#F3E8FF]">
+                    <CardContent className="p-4 flex items-center gap-3">
+                      <Badge className="bg-[#E76F51]/15 text-[#E76F51] border-0 rounded-full px-2.5 py-0.5 text-xs font-semibold">
+                        {item.status || "failed"}
+                      </Badge>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-[#1E1B4B] truncate">
+                          Story {item.story_id} · Page {item.page_index ?? "?"}
+                        </p>
+                        <p className="text-xs text-[#1E1B4B]/50 truncate">
+                          pageId: {item.page_id || "-"} · user: {item.user_id || "-"}
+                        </p>
+                        <p className="text-xs text-[#1E1B4B]/40 truncate">
+                          failures: {Number(item.failure_count ?? 0)} · {toDisplayDate(item.last_failed_at)}
+                        </p>
+                        {item.last_error && (
+                          <p className="text-xs text-[#E76F51] truncate mt-0.5">{String(item.last_error)}</p>
+                        )}
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleRetryFailedImage(item.id)}
+                        disabled={retryingFailedDocId === item.id}
+                        className="rounded-full border-[#3730A3]/30 text-[#3730A3] hover:bg-[#3730A3]/10 text-xs"
+                      >
+                        <RefreshCw className={`w-3.5 h-3.5 mr-1 ${retryingFailedDocId === item.id ? "animate-spin" : ""}`} strokeWidth={2} />
+                        {retryingFailedDocId === item.id ? "Retrying…" : "Retry"}
+                      </Button>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
@@ -1071,6 +1278,8 @@ export default function AdminPage() {
             )}
           </div>
         )}
+          </div>
+        </div>
       </div>
     </div>
   );
