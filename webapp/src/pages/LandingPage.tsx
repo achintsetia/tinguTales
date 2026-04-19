@@ -1,11 +1,11 @@
 import { useAuth } from "../context/AuthContext";
 import { useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
+import { collection, getDocs } from "firebase/firestore";
 import AuthModal from "../components/AuthModal";
 import { Button } from "../components/ui/button";
 import { BookOpen, Sparkles, Globe, Palette, Download, Heart } from "lucide-react";
-
-const HERO_IMAGE = "https://static.prod-images.emergentagent.com/jobs/29fd7301-9062-4a24-87a1-30ba6782dc07/images/75495906e8067d9a8d127a106ed04fefd4b7326df3ab9191be35a2a8e9850985.png";
+import { db } from "../firebase";
 
 const FEATURES = [
   {
@@ -46,14 +46,73 @@ const LANGUAGES_PREVIEW = [
   { code: "ml", native: "\u0d2e\u0d32\u0d2f\u0d3e\u0d33\u0d02", name: "Malayalam" },
 ];
 
+const FAQS = [
+  {
+    question: "What is Tingu Tales?",
+    answer:
+      "Tingu Tales is an AI storybook creator that turns your child into the hero of personalized, illustrated stories.",
+  },
+  {
+    question: "Which languages are available?",
+    answer:
+      "You can create stories in 9 languages: English, Hindi, Kannada, Tamil, Telugu, Marathi, Bengali, Gujarati, and Malayalam.",
+  },
+  {
+    question: "Can I download and print the storybook?",
+    answer:
+      "Yes. Every storybook can be downloaded as a PDF so you can print it, gift it, or share it with family.",
+  },
+  {
+    question: "Is Tingu Tales suitable for young children?",
+    answer:
+      "Yes. The stories are designed to be warm, age-appropriate, and easy for children to enjoy with parents.",
+  },
+  {
+    question: "How does Tingu Tales protect child privacy?",
+    answer:
+      "We take child privacy seriously. The uploaded child photo is deleted immediately after avatar creation, and we do not share your data with anyone.",
+  },
+];
+
 export default function LandingPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [showAuth, setShowAuth] = useState(false);
+  const [sampleCoverUrls, setSampleCoverUrls] = useState<string[]>([]);
 
   useEffect(() => {
     if (user) navigate("/dashboard", { replace: true });
   }, [user, navigate]);
+
+  useEffect(() => {
+    const loadSampleCovers = async () => {
+      try {
+        const snapshot = await getDocs(collection(db, "sample_covers"));
+        const sortedDocs = [...snapshot.docs].sort((a, b) => {
+          const aNum = Number(a.id.replace(/^sample_/, ""));
+          const bNum = Number(b.id.replace(/^sample_/, ""));
+          if (Number.isNaN(aNum) || Number.isNaN(bNum)) return a.id.localeCompare(b.id);
+          return aNum - bNum;
+        });
+
+        const urls = sortedDocs
+          .map((doc) => {
+            const data = doc.data() as Record<string, unknown>;
+            const url = data.url;
+            return typeof url === "string" ? url.trim() : "";
+          })
+          .filter((url) => url.length > 0)
+          .slice(0, 8);
+
+        setSampleCoverUrls(urls);
+      } catch (err) {
+        console.error("Failed to load sample covers", err);
+        setSampleCoverUrls([]);
+      }
+    };
+
+    void loadSampleCovers();
+  }, []);
 
   return (
     <div className="min-h-screen bg-[#FDFBF7]">
@@ -83,7 +142,7 @@ export default function LandingPage() {
       <section className="relative min-h-[90vh] flex items-center pt-20">
         <div
           className="absolute inset-0 bg-cover bg-center"
-          style={{ backgroundImage: `url(${HERO_IMAGE})` }}
+          style={{ backgroundImage: "url('/landing-hero.png')" }}
         />
         <div className="absolute inset-0 hero-overlay" />
         <div className="relative z-10 max-w-7xl mx-auto px-6 py-20 w-full">
@@ -127,6 +186,66 @@ export default function LandingPage() {
               ))}
             </div>
           </div>
+        </div>
+      </section>
+
+      {/* Sample Covers */}
+      <section className="max-w-7xl mx-auto px-6 py-16" aria-label="Sample generated storybook covers">
+        <div className="text-center mb-10">
+          <span className="text-sm uppercase tracking-[0.2em] font-bold text-[#FF9F1C] mb-3 block">
+            Sample covers
+          </span>
+          <h2
+            className="text-2xl sm:text-3xl lg:text-4xl tracking-tight font-medium text-[#1E1B4B]"
+            style={{ fontFamily: "Fredoka" }}
+          >
+            A few storybooks our customers loved
+          </h2>
+        </div>
+
+        {sampleCoverUrls.length > 0 ? (
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-6">
+            {sampleCoverUrls.map((url, index) => (
+              <article
+                key={`${url}-${index}`}
+                className="bg-white rounded-2xl overflow-hidden border-2 border-[#F3E8FF] shadow-sm max-w-[180px] md:max-w-[200px] mx-auto w-full"
+              >
+                <img
+                  src={url}
+                  alt={`Sample generated storybook cover ${index + 1}`}
+                  className="w-full aspect-[3/4] object-contain bg-[#FDFBF7]"
+                  loading="lazy"
+                />
+              </article>
+            ))}
+          </div>
+        ) : (
+          <p className="text-center text-[#1E1B4B]/65">
+            Sample covers will appear here after you add documents like sample_0 and sample_1 in the sample_covers collection.
+          </p>
+        )}
+      </section>
+
+      {/* FAQ for AEO */}
+      <section className="max-w-5xl mx-auto px-6 pb-24" aria-label="Frequently asked questions">
+        <div className="text-center mb-12">
+          <span className="text-sm uppercase tracking-[0.2em] font-bold text-[#FF9F1C] mb-4 block">
+            Quick answers
+          </span>
+          <h2
+            className="text-2xl sm:text-3xl tracking-tight font-medium text-[#1E1B4B]"
+            style={{ fontFamily: "Fredoka" }}
+          >
+            Frequently asked questions about Tingu Tales
+          </h2>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {FAQS.map((faq) => (
+            <article key={faq.question} className="bg-white border-2 border-[#F3E8FF] rounded-2xl p-6">
+              <h3 className="text-lg font-semibold text-[#1E1B4B] mb-2">{faq.question}</h3>
+              <p className="text-[#1E1B4B]/75 leading-relaxed">{faq.answer}</p>
+            </article>
+          ))}
         </div>
       </section>
 

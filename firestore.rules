@@ -89,6 +89,12 @@ service cloud.firestore {
       allow read, write: if isAdmin();
     }
 
+    // Sample landing page covers — public read for homepage, admin write only
+    match /sample_covers/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
     // Failed image generation queue — admin panel access only
     match /_failed_image_generation/{docId} {
       allow read, write: if isAdmin();
