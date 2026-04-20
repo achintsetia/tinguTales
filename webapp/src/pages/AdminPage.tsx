@@ -12,7 +12,7 @@ import { Switch } from "../components/ui/switch";
 import { Input } from "../components/ui/input";
 import {
   ArrowLeft, Trash2, RefreshCw, DollarSign, Users, BookOpen,
-  Activity, Undo2, Bot, ChevronDown, ChevronUp, IndianRupee, User, Baby, Search
+  Activity, Undo2, Bot, ChevronDown, ChevronUp, IndianRupee, User, Baby, Search, Mail
 } from "lucide-react";
 
 const ADMIN_TAB_STORAGE_KEY = "admin_active_tab";
@@ -21,6 +21,7 @@ const ADMIN_TAB_IDS = [
   "users",
   "stories",
   "failed-image-generation",
+  "contacts",
   "whitelist",
   "coupons",
   "payments",
@@ -60,6 +61,11 @@ export default function AdminPage() {
   const [failedImageItems, setFailedImageItems] = useState<any[]>([]);
   const [loadingFailedImages, setLoadingFailedImages] = useState(false);
   const [retryingFailedDocId, setRetryingFailedDocId] = useState<string | null>(null);
+
+  // Contacts tab state
+  const [contacts, setContacts] = useState<any[]>([]);
+  const [loadingContacts, setLoadingContacts] = useState(false);
+  const [deletingContactId, setDeletingContactId] = useState<string | null>(null);
 
   // Coupons tab state
   const [coupons, setCoupons] = useState<any[]>([]);
@@ -219,6 +225,7 @@ export default function AdminPage() {
     { id: "users", label: "Users" },
     { id: "stories", label: "Stories" },
     { id: "failed-image-generation", label: "Failed Image Generation" },
+    { id: "contacts", label: "Contacts" },
     { id: "whitelist", label: "Whitelist" },
     { id: "coupons", label: "Coupons" },
     { id: "payments", label: "Payments" },
@@ -231,6 +238,7 @@ export default function AdminPage() {
     if (tabId === "whitelist") fetchWhitelistData();
     if (tabId === "coupons") fetchCoupons();
     if (tabId === "failed-image-generation") fetchFailedImageGenerations();
+    if (tabId === "contacts") fetchContacts();
   };
 
   useEffect(() => {
@@ -324,6 +332,31 @@ export default function AdminPage() {
       toast.error("Failed to load coupons");
     } finally {
       setLoadingCoupons(false);
+    }
+  };
+
+  const fetchContacts = async () => {
+    setLoadingContacts(true);
+    try {
+      const snap = await getDocs(query(collection(db, "contacts"), orderBy("created_at", "desc")));
+      setContacts(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+    } catch {
+      toast.error("Failed to load contact queries");
+    } finally {
+      setLoadingContacts(false);
+    }
+  };
+
+  const handleDeleteContact = async (contactId: string) => {
+    setDeletingContactId(contactId);
+    try {
+      await deleteDoc(doc(db, "contacts", contactId));
+      setContacts((prev) => prev.filter((c) => c.id !== contactId));
+      toast.success("Contact query deleted");
+    } catch {
+      toast.error("Failed to delete contact query");
+    } finally {
+      setDeletingContactId(null);
     }
   };
 
@@ -996,6 +1029,61 @@ export default function AdminPage() {
                       >
                         <RefreshCw className={`w-3.5 h-3.5 mr-1 ${retryingFailedDocId === item.id ? "animate-spin" : ""}`} strokeWidth={2} />
                         {retryingFailedDocId === item.id ? "Retrying…" : "Retry"}
+                      </Button>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Contacts Tab */}
+        {tab === "contacts" && (
+          <div data-testid="admin-contacts">
+            <div className="flex items-center justify-between mb-4">
+              <p className="text-sm text-[#1E1B4B]/50">{contacts.length} contact quer(y/ies)</p>
+              <Button
+                variant="outline"
+                onClick={fetchContacts}
+                disabled={loadingContacts}
+                className="rounded-full border-[#F3E8FF]"
+              >
+                <RefreshCw className={`w-4 h-4 mr-2 ${loadingContacts ? "animate-spin" : ""}`} strokeWidth={2} />
+                Refresh
+              </Button>
+            </div>
+
+            {loadingContacts ? (
+              <div className="flex items-center justify-center py-10 text-[#1E1B4B]/40">
+                <RefreshCw className="w-5 h-5 animate-spin mr-2" />
+                Loading contact queries...
+              </div>
+            ) : contacts.length === 0 ? (
+              <p className="text-center py-10 text-[#1E1B4B]/40">No contact queries yet</p>
+            ) : (
+              <div className="space-y-2">
+                {contacts.map((c: any) => (
+                  <Card key={c.id} className="rounded-2xl border-2 border-[#F3E8FF]">
+                    <CardContent className="p-4 flex items-start gap-3">
+                      <div className="w-9 h-9 rounded-full bg-[#3730A3]/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <Mail className="w-4 h-4 text-[#3730A3]" strokeWidth={2} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-[#1E1B4B]">{c.name || "Unknown"}</p>
+                        <p className="text-xs text-[#1E1B4B]/55">{c.email || "-"} · {c.phone_number || "-"}</p>
+                        <p className="text-xs text-[#1E1B4B]/40 mt-0.5">{toDisplayDate(c.created_at)}</p>
+                        <p className="text-sm text-[#1E1B4B]/80 mt-2 whitespace-pre-wrap break-words">{c.query || "-"}</p>
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleDeleteContact(c.id)}
+                        disabled={deletingContactId === c.id}
+                        className="rounded-full border-[#E76F51]/30 text-[#E76F51] hover:bg-[#E76F51]/10 text-xs"
+                      >
+                        <Trash2 className="w-3.5 h-3.5 mr-1" strokeWidth={2} />
+                        {deletingContactId === c.id ? "Deleting..." : "Delete"}
                       </Button>
                     </CardContent>
                   </Card>

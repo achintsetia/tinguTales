@@ -1,7 +1,7 @@
 import { useAuth } from "../context/AuthContext";
 import { useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
-import { collection, getDocs } from "firebase/firestore";
+import { addDoc, collection, getDocs, serverTimestamp } from "firebase/firestore";
 import AuthModal from "../components/AuthModal";
 import { Button } from "../components/ui/button";
 import { BookOpen, Sparkles, Globe, Palette, Download, Heart } from "lucide-react";
@@ -78,6 +78,15 @@ export default function LandingPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [showAuth, setShowAuth] = useState(false);
+  const [showContactForm, setShowContactForm] = useState(false);
+  const [contactSubmitted, setContactSubmitted] = useState(false);
+  const [contactSubmitting, setContactSubmitting] = useState(false);
+  const [contactForm, setContactForm] = useState({
+    name: "",
+    phoneNumber: "",
+    email: "",
+    query: "",
+  });
   const [sampleCoverUrls, setSampleCoverUrls] = useState<string[]>([]);
 
   useEffect(() => {
@@ -114,6 +123,47 @@ export default function LandingPage() {
     void loadSampleCovers();
   }, []);
 
+  const resetContactState = () => {
+    setContactSubmitted(false);
+    setContactSubmitting(false);
+    setContactForm({
+      name: "",
+      phoneNumber: "",
+      email: "",
+      query: "",
+    });
+  };
+
+  const handleSubmitContact = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+
+    const name = contactForm.name.trim();
+    const phoneNumber = contactForm.phoneNumber.trim();
+    const email = contactForm.email.trim().toLowerCase();
+    const queryText = contactForm.query.trim();
+
+    if (!name || !phoneNumber || !email || !queryText) return;
+
+    setContactSubmitting(true);
+    try {
+      await addDoc(collection(db, "contacts"), {
+        name,
+        phone_number: phoneNumber,
+        email,
+        query: queryText,
+        source: "landing_page",
+        status: "new",
+        created_at: serverTimestamp(),
+      });
+      setContactSubmitted(true);
+    } catch (err) {
+      console.error("Failed to submit contact form", err);
+      alert("Could not submit right now. Please try again in a moment.");
+    } finally {
+      setContactSubmitting(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-[#FDFBF7]">
       {/* Navbar */}
@@ -128,13 +178,26 @@ export default function LandingPage() {
               Tingu <span className="text-[#FF9F1C]">Tales</span>
             </span>
           </div>
-          <Button
-            data-testid="btn-google-login-nav"
-            onClick={() => setShowAuth(true)}
-            className="rounded-full bg-[#FF9F1C] hover:bg-[#E88A12] text-[#1E1B4B] font-bold px-6 min-h-[44px]"
-          >
-            Get Started
-          </Button>
+          <div className="flex items-center gap-2 sm:gap-3">
+            <Button
+              type="button"
+              onClick={() => {
+                resetContactState();
+                setShowContactForm(true);
+              }}
+              variant="outline"
+              className="rounded-full border-[#1E1B4B]/15 text-[#1E1B4B] hover:bg-[#1E1B4B]/5 font-semibold px-4 sm:px-6 min-h-[44px]"
+            >
+              Contact
+            </Button>
+            <Button
+              data-testid="btn-google-login-nav"
+              onClick={() => setShowAuth(true)}
+              className="rounded-full bg-[#FF9F1C] hover:bg-[#E88A12] text-[#1E1B4B] font-bold px-6 min-h-[44px]"
+            >
+              Get Started
+            </Button>
+          </div>
         </div>
       </nav>
 
@@ -317,6 +380,91 @@ export default function LandingPage() {
       </section>
 
       <AuthModal open={showAuth} onClose={() => setShowAuth(false)} />
+
+      {showContactForm && (
+        <div className="fixed inset-0 z-[70] bg-[#1E1B4B]/55 backdrop-blur-sm flex items-center justify-center px-4">
+          <div className="w-full max-w-lg rounded-3xl bg-white border-2 border-[#F3E8FF] shadow-2xl p-6 sm:p-8 relative">
+            <button
+              type="button"
+              aria-label="Close contact form"
+              onClick={() => setShowContactForm(false)}
+              className="absolute top-4 right-4 text-[#1E1B4B]/45 hover:text-[#1E1B4B] text-2xl leading-none"
+            >
+              ×
+            </button>
+
+            {!contactSubmitted ? (
+              <>
+                <h3 className="text-2xl font-semibold text-[#1E1B4B] mb-1" style={{ fontFamily: "Fredoka" }}>
+                  Contact us
+                </h3>
+                <p className="text-sm text-[#1E1B4B]/60 mb-5">
+                  Share your details and question. Our team will reach out soon.
+                </p>
+
+                <form className="space-y-4" onSubmit={handleSubmitContact}>
+                  <input
+                    type="text"
+                    required
+                    value={contactForm.name}
+                    onChange={(e) => setContactForm((prev) => ({ ...prev, name: e.target.value }))}
+                    placeholder="Your name"
+                    className="w-full rounded-xl border-2 border-[#F3E8FF] px-4 py-3 text-sm text-[#1E1B4B] placeholder:text-[#1E1B4B]/35 focus:outline-none focus:border-[#3730A3]/35"
+                  />
+                  <input
+                    type="tel"
+                    required
+                    value={contactForm.phoneNumber}
+                    onChange={(e) => setContactForm((prev) => ({ ...prev, phoneNumber: e.target.value }))}
+                    placeholder="Phone number"
+                    className="w-full rounded-xl border-2 border-[#F3E8FF] px-4 py-3 text-sm text-[#1E1B4B] placeholder:text-[#1E1B4B]/35 focus:outline-none focus:border-[#3730A3]/35"
+                  />
+                  <input
+                    type="email"
+                    required
+                    value={contactForm.email}
+                    onChange={(e) => setContactForm((prev) => ({ ...prev, email: e.target.value }))}
+                    placeholder="Email address"
+                    className="w-full rounded-xl border-2 border-[#F3E8FF] px-4 py-3 text-sm text-[#1E1B4B] placeholder:text-[#1E1B4B]/35 focus:outline-none focus:border-[#3730A3]/35"
+                  />
+                  <textarea
+                    required
+                    rows={4}
+                    value={contactForm.query}
+                    onChange={(e) => setContactForm((prev) => ({ ...prev, query: e.target.value }))}
+                    placeholder="Your query"
+                    className="w-full rounded-xl border-2 border-[#F3E8FF] px-4 py-3 text-sm text-[#1E1B4B] placeholder:text-[#1E1B4B]/35 focus:outline-none focus:border-[#3730A3]/35 resize-none"
+                  />
+
+                  <Button
+                    type="submit"
+                    disabled={contactSubmitting}
+                    className="w-full rounded-full bg-[#FF9F1C] hover:bg-[#E88A12] text-[#1E1B4B] font-bold min-h-[48px]"
+                  >
+                    {contactSubmitting ? "Submitting..." : "Submit"}
+                  </Button>
+                </form>
+              </>
+            ) : (
+              <div className="py-8 text-center">
+                <h3 className="text-2xl font-semibold text-[#1E1B4B] mb-2" style={{ fontFamily: "Fredoka" }}>
+                  Thank you!
+                </h3>
+                <p className="text-[#1E1B4B]/65 mb-6">
+                  Our team will get back to you shortly.
+                </p>
+                <Button
+                  type="button"
+                  onClick={() => setShowContactForm(false)}
+                  className="rounded-full bg-[#3730A3] hover:bg-[#2f2a8c] text-white px-8"
+                >
+                  Close
+                </Button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Footer */}
       <footer className="border-t border-[#F3E8FF] py-8">

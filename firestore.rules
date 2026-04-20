@@ -95,6 +95,12 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // Contact form submissions — public create, admin read/manage
+    match /contacts/{docId} {
+      allow create: if true;
+      allow read, update, delete: if isAdmin();
+    }
+
     // Failed image generation queue — admin panel access only
     match /_failed_image_generation/{docId} {
       allow read, write: if isAdmin();
