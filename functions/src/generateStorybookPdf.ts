@@ -3,7 +3,8 @@ import {onTaskDispatched} from "firebase-functions/v2/tasks";
 import {FieldValue} from "firebase-admin/firestore";
 import {PDFDocument} from "pdf-lib";
 import {v4 as uuidv4} from "uuid";
-import {db, bucket} from "./admin.js";
+import {admin, db, bucket} from "./admin.js";
+import {sendPdfReadyEmail} from "./emailService.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -183,6 +184,25 @@ export const generateStorybookPdf = onTaskDispatched<PdfTaskPayload>(
       pages: storyPagesSummary,
       updated_at: FieldValue.serverTimestamp(),
     });
+
+    // Send PDF-ready email to the user (best-effort, non-fatal)
+    try {
+      const storySnap = await db.collection("stories").doc(storyId).get();
+      const story = storySnap.data() ?? {};
+      const authUser = await admin.auth().getUser(userId);
+      const userEmail = authUser.email ?? "";
+      if (userEmail) {
+        await sendPdfReadyEmail({
+          userEmail,
+          storyTitle: story.title ?? "Your Storybook",
+          childName: story.child_name ?? "your child",
+          pdfUrl,
+          storyId,
+        });
+      }
+    } catch (emailErr) {
+      logger.warn("[generateStorybookPdf] PDF-ready email failed (non-fatal)", emailErr);
+    }
 
     logger.info(`[generateStorybookPdf] DONE storyId=${storyId} — status=completed`);
   }

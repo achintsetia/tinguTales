@@ -53,7 +53,12 @@ export default function StoryViewer() {
   const [preloading, setPreloading] = useState(true);  // waiting for images to cache
   const [zoomedPage, setZoomedPage] = useState(null);  // index of page shown in lightbox
   const [showReveal, setShowReveal] = useState(true);  // show back cover reveal before flipbook
-  const [livePages, setLivePages] = useState<{page_number: number; image_url: string | null; jpeg_url: string | null; text?: string; status?: string}[]>([]); // real-time page images from subcollection
+  const [livePages, setLivePages] = useState<{page_number: number; image_url: string | null; jpeg_url: string | null; text?: string; status?: string}[]>([]);
+  const [allLooksGood, setAllLooksGood] = useState(false);  // user confirmed quality check
+  const [showRefundForm, setShowRefundForm] = useState(false);
+  const [refundIssue, setRefundIssue] = useState("");
+  const [submittingRefund, setSubmittingRefund] = useState(false);
+  const [refundSubmitted, setRefundSubmitted] = useState(false); // real-time page images from subcollection
 
   useEffect(() => {
     if (!storyId) return;
@@ -117,8 +122,33 @@ export default function StoryViewer() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [story?.status, currentPage, leavingPage]);
 
+  const handleSubmitRefund = async () => {
+    if (!refundIssue.trim()) {
+      toast.error("Please describe the issue first.");
+      return;
+    }
+    setSubmittingRefund(true);
+    try {
+      const fn = httpsCallable(functions, "submitRefundRequest");
+      await fn({ storyId, issue: refundIssue.trim() });
+      setRefundSubmitted(true);
+      setShowRefundForm(false);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Failed to submit refund request";
+      toast.error(msg);
+    } finally {
+      setSubmittingRefund(false);
+    }
+  };
+
   const handleDownloadPDF = async () => {
     if (story?.pdf_url) {
+      try {
+        const fn = httpsCallable(functions, "recordPdfDownload");
+        await fn({ storyId });
+      } catch (e) {
+        console.warn("Failed to record PDF download:", e);
+      }
       window.open(story.pdf_url, "_blank");
     } else {
       toast.info("PDF is being prepared, please check back shortly.");
@@ -525,14 +555,6 @@ export default function StoryViewer() {
           {/* Secondary actions */}
           <div className="flex items-center justify-center gap-4 mt-5">
             <button
-              data-testid="btn-download-reveal"
-              onClick={handleDownloadPDF}
-              className="text-white/50 hover:text-white/80 text-sm font-medium transition-colors inline-flex items-center gap-1.5"
-            >
-              <Download className="w-4 h-4" strokeWidth={2} />
-              Download PDF
-            </button>
-            <button
               onClick={() => navigate("/dashboard")}
               className="text-white/50 hover:text-white/80 text-sm font-medium transition-colors inline-flex items-center gap-1.5"
             >
@@ -602,25 +624,18 @@ export default function StoryViewer() {
             {story?.title || "My Storybook"}
           </h1>
 
-          <Button
-            data-testid="btn-download-pdf"
-            onClick={handleDownloadPDF}
-            size="sm"
-            className="rounded-full bg-white/15 hover:bg-white/25 text-white border border-white/20 shrink-0"
-          >
-            <Download className="w-4 h-4 mr-1.5" strokeWidth={2.5} />
-            PDF
-          </Button>
         </div>
       </nav>
 
       {/* Book area */}
-      <div className="flex-1 flex flex-col items-center justify-center px-4 py-8 gap-6">
+      <div className="flex-1 flex flex-col lg:flex-row items-center lg:items-start justify-center px-4 py-8 gap-8">
+
+        {/* Book column */}
+        <div className="flex flex-col items-center gap-6 w-full" style={{ maxWidth: "min(480px, 92vw)" }}>
 
         {/* The book card with flip effect */}
         <div
           className="book-scene w-full"
-          style={{ maxWidth: "min(480px, 92vw)" }}
         >
           <div
             className="relative rounded-2xl overflow-hidden shadow-2xl"
@@ -748,6 +763,106 @@ export default function StoryViewer() {
             ? "Back Cover"
             : `Page ${currentPage} of ${total - 2}`}
         </p>
+
+        </div>{/* end book column */}
+
+        {/* Quality check side panel */}
+        <div className="w-full lg:w-72 xl:w-80 shrink-0 lg:mt-4">
+          <div className="rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 p-5 text-white">
+            <div className="flex items-start gap-3 mb-4">
+              <div className="w-8 h-8 rounded-full bg-[#FF9F1C]/20 flex items-center justify-center shrink-0 mt-0.5">
+                <Star className="w-4 h-4 text-[#FF9F1C]" fill="currentColor" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-white text-sm mb-1" style={{ fontFamily: "Fredoka" }}>
+                  Review your storybook
+                </h3>
+                <p className="text-white/70 text-xs leading-relaxed">
+                  Please check all the pages and details of the book. If you notice any defect or issue, you can request a refund.
+                </p>
+              </div>
+            </div>
+
+            {!allLooksGood ? (
+              <div className="flex flex-col gap-3">
+                {!showRefundForm && !refundSubmitted && (
+                  <>
+                    <Button
+                      data-testid="btn-all-looks-good"
+                      onClick={() => setAllLooksGood(true)}
+                      className="w-full rounded-full bg-[#2A9D8F] hover:bg-[#23877B] text-white font-semibold min-h-[44px] gap-2"
+                    >
+                      <Star className="w-4 h-4" fill="currentColor" strokeWidth={0} />
+                      All Looks Good
+                    </Button>
+                    <Button
+                      data-testid="btn-ask-refund"
+                      variant="ghost"
+                      onClick={() => setShowRefundForm(true)}
+                      className="w-full rounded-full border border-white/20 text-white/70 hover:text-white hover:bg-white/10 font-medium min-h-[44px]"
+                    >
+                      Ask for Refund
+                    </Button>
+                  </>
+                )}
+
+                {showRefundForm && !refundSubmitted && (
+                  <div className="flex flex-col gap-3">
+                    <p className="text-white/80 text-xs leading-relaxed">
+                      Our team will review your refund request and only if there are any defects present, will process you the refund.
+                    </p>
+                    <textarea
+                      placeholder="Describe the issue you noticed…"
+                      value={refundIssue}
+                      onChange={(e) => setRefundIssue(e.target.value)}
+                      rows={3}
+                      className="w-full rounded-xl bg-white/10 border border-white/20 text-white placeholder:text-white/40 text-sm resize-none focus:outline-none focus:ring-1 focus:ring-white/30 px-3 py-2"
+                    />
+                    <Button
+                      data-testid="btn-submit-refund"
+                      onClick={handleSubmitRefund}
+                      disabled={submittingRefund}
+                      className="w-full rounded-full bg-[#E76F51] hover:bg-[#d4613f] text-white font-semibold min-h-[44px]"
+                    >
+                      {submittingRefund ? "Submitting…" : "Submit Refund Request"}
+                    </Button>
+                    <button
+                      onClick={() => { setShowRefundForm(false); setRefundIssue(""); }}
+                      className="text-white/40 hover:text-white/70 text-xs text-center transition-colors"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                )}
+
+                {refundSubmitted && (
+                  <div className="rounded-xl bg-white/10 border border-white/20 p-4 text-center">
+                    <p className="text-white/90 text-sm font-medium mb-1">Request submitted!</p>
+                    <p className="text-white/55 text-xs leading-relaxed">
+                      Our team will review your refund request and only if there are any defects present, will process you the refund.
+                    </p>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="flex flex-col gap-3">
+                <p className="text-[#2A9D8F] text-xs font-medium flex items-center gap-1.5">
+                  <Star className="w-3.5 h-3.5" fill="currentColor" strokeWidth={0} />
+                  Great! Your book is confirmed.
+                </p>
+                <Button
+                  data-testid="btn-download-pdf"
+                  onClick={handleDownloadPDF}
+                  className="w-full rounded-full bg-[#FF9F1C] hover:bg-[#E88A12] text-[#1E1B4B] font-bold min-h-[44px] gap-2"
+                >
+                  <Download className="w-4 h-4" strokeWidth={2.5} />
+                  Download PDF
+                </Button>
+              </div>
+            )}
+          </div>
+        </div>
+
       </div>
     </div>
   );

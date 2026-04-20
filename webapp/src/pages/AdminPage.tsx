@@ -12,7 +12,7 @@ import { Switch } from "../components/ui/switch";
 import { Input } from "../components/ui/input";
 import {
   ArrowLeft, Trash2, RefreshCw, DollarSign, Users, BookOpen,
-  Activity, Undo2, Bot, ChevronDown, ChevronUp, IndianRupee, User, Baby, Search, Mail
+  Activity, Undo2, Bot, ChevronDown, ChevronUp, IndianRupee, User, Baby, Search, Mail, AlertCircle
 } from "lucide-react";
 
 const ADMIN_TAB_STORAGE_KEY = "admin_active_tab";
@@ -21,6 +21,7 @@ const ADMIN_TAB_IDS = [
   "users",
   "stories",
   "failed-image-generation",
+  "refund-requests",
   "contacts",
   "whitelist",
   "coupons",
@@ -66,6 +67,14 @@ export default function AdminPage() {
   const [contacts, setContacts] = useState<any[]>([]);
   const [loadingContacts, setLoadingContacts] = useState(false);
   const [deletingContactId, setDeletingContactId] = useState<string | null>(null);
+
+  // Refund requests tab state
+  const [refundRequests, setRefundRequests] = useState<any[]>([]);
+  const [loadingRefunds, setLoadingRefunds] = useState(false);
+  const [expandedRefundId, setExpandedRefundId] = useState<string | null>(null);
+  const [refundPagesByStory, setRefundPagesByStory] = useState<Record<string, any[]>>({});
+  const [retryingRefundPageId, setRetryingRefundPageId] = useState<string | null>(null);
+  const [regeneratingPdfForStory, setRegeneratingPdfForStory] = useState<string | null>(null);
 
   // Coupons tab state
   const [coupons, setCoupons] = useState<any[]>([]);
@@ -225,6 +234,7 @@ export default function AdminPage() {
     { id: "users", label: "Users" },
     { id: "stories", label: "Stories" },
     { id: "failed-image-generation", label: "Failed Image Generation" },
+    { id: "refund-requests", label: "Refund Requests" },
     { id: "contacts", label: "Contacts" },
     { id: "whitelist", label: "Whitelist" },
     { id: "coupons", label: "Coupons" },
@@ -239,6 +249,7 @@ export default function AdminPage() {
     if (tabId === "coupons") fetchCoupons();
     if (tabId === "failed-image-generation") fetchFailedImageGenerations();
     if (tabId === "contacts") fetchContacts();
+    if (tabId === "refund-requests") fetchRefundRequests();
   };
 
   useEffect(() => {
@@ -344,6 +355,62 @@ export default function AdminPage() {
       toast.error("Failed to load contact queries");
     } finally {
       setLoadingContacts(false);
+    }
+  };
+
+  const fetchRefundRequests = async () => {
+    setLoadingRefunds(true);
+    try {
+      const snap = await getDocs(query(collection(db, "refund_requests"), orderBy("created_at", "desc")));
+      setRefundRequests(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+    } catch {
+      toast.error("Failed to load refund requests");
+    } finally {
+      setLoadingRefunds(false);
+    }
+  };
+
+  const fetchRefundStoryPages = async (storyId: string) => {
+    if (refundPagesByStory[storyId]) return;
+    try {
+      const snap = await getDocs(
+        query(collection(db, "stories", storyId, "pages"), orderBy("page", "asc"))
+      );
+      const pages = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      setRefundPagesByStory((prev) => ({ ...prev, [storyId]: pages }));
+    } catch {
+      toast.error("Failed to load story pages");
+    }
+  };
+
+  const handleRefundRetryPage = async (storyId: string, pageId: string) => {
+    setRetryingRefundPageId(pageId);
+    try {
+      const fns = getFunctions(undefined, "asia-south1");
+      const retryFn = httpsCallable(fns, "adminRetryPageImage");
+      await retryFn({ storyId, pageId });
+      toast.success("Page re-queued for generation");
+      // Refresh pages for this story
+      setRefundPagesByStory((prev) => { const next = { ...prev }; delete next[storyId]; return next; });
+      await fetchRefundStoryPages(storyId);
+    } catch (e: any) {
+      toast.error(e?.message || "Retry failed");
+    } finally {
+      setRetryingRefundPageId(null);
+    }
+  };
+
+  const handleRefundRegeneratePdf = async (storyId: string) => {
+    setRegeneratingPdfForStory(storyId);
+    try {
+      const fns = getFunctions(undefined, "asia-south1");
+      const retryFn = httpsCallable(fns, "adminRetryPdf");
+      await retryFn({ storyId });
+      toast.success("PDF regeneration queued — new PDF will replace the old one");
+    } catch (e: any) {
+      toast.error(e?.message || "PDF regeneration failed");
+    } finally {
+      setRegeneratingPdfForStory(null);
     }
   };
 
@@ -1033,6 +1100,155 @@ export default function AdminPage() {
                     </CardContent>
                   </Card>
                 ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Refund Requests Tab */}
+        {tab === "refund-requests" && (
+          <div data-testid="admin-refund-requests">
+            <div className="flex items-center justify-between mb-4">
+              <p className="text-sm text-[#1E1B4B]/50">{refundRequests.length} refund request(s)</p>
+              <Button
+                variant="outline"
+                onClick={fetchRefundRequests}
+                disabled={loadingRefunds}
+                className="rounded-full border-[#F3E8FF]"
+              >
+                <RefreshCw className={`w-4 h-4 mr-2 ${loadingRefunds ? "animate-spin" : ""}`} strokeWidth={2} />
+                Refresh
+              </Button>
+            </div>
+
+            {loadingRefunds ? (
+              <div className="flex items-center justify-center py-10 text-[#1E1B4B]/40">
+                <RefreshCw className="w-5 h-5 animate-spin mr-2" />
+                Loading refund requests…
+              </div>
+            ) : refundRequests.length === 0 ? (
+              <p className="text-center py-10 text-[#1E1B4B]/40">No refund requests yet</p>
+            ) : (
+              <div className="space-y-3">
+                {refundRequests.map((r: any) => {
+                  const isExpanded = expandedRefundId === r.id;
+                  const storyId = r.story_id;
+                  const pages = refundPagesByStory[storyId] || [];
+                  return (
+                    <div key={r.id} className="rounded-2xl border-2 border-[#F3E8FF] bg-white overflow-hidden">
+                      {/* Header row */}
+                      <button
+                        className="w-full flex items-start gap-3 p-4 text-left hover:bg-[#FFF8F0] transition-colors"
+                        onClick={async () => {
+                          const next = isExpanded ? null : r.id;
+                          setExpandedRefundId(next);
+                          if (next && storyId) await fetchRefundStoryPages(storyId);
+                        }}
+                      >
+                        <div className="w-9 h-9 rounded-full bg-[#E76F51]/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+                          <AlertCircle className="w-4 h-4 text-[#E76F51]" strokeWidth={2} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold text-[#1E1B4B] truncate">
+                            {r.story_title || storyId || "Unknown Story"}
+                          </p>
+                          <p className="text-xs text-[#1E1B4B]/50 truncate">User: {r.user_id}</p>
+                          <p className="text-xs text-[#1E1B4B]/40">{toDisplayDate(r.created_at)}</p>
+                          <p className="text-sm text-[#1E1B4B]/75 mt-1.5 whitespace-pre-wrap break-words line-clamp-2">
+                            {r.issue}
+                          </p>
+                        </div>
+                        <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                          <Badge className="bg-[#E76F51]/15 text-[#E76F51] border-0 rounded-full px-2.5 py-0.5 text-xs font-semibold">
+                            {r.status || "pending"}
+                          </Badge>
+                          {isExpanded
+                            ? <ChevronUp className="w-4 h-4 text-[#1E1B4B]/30 mt-2" />
+                            : <ChevronDown className="w-4 h-4 text-[#1E1B4B]/30 mt-2" />}
+                        </div>
+                      </button>
+
+                      {/* Expanded: full issue + pages */}
+                      {isExpanded && (
+                        <div className="border-t-2 border-[#F3E8FF] px-4 pt-4 pb-5 bg-[#FDFBF7]">
+                          {/* Full issue text */}
+                          <p className="text-xs font-bold text-[#1E1B4B]/40 uppercase tracking-wider mb-2">Issue Description</p>
+                          <p className="text-sm text-[#1E1B4B]/80 whitespace-pre-wrap break-words mb-5 p-3 rounded-xl bg-white border border-[#F3E8FF]">
+                            {r.issue}
+                          </p>
+
+                          {/* Story details */}
+                          <p className="text-xs font-bold text-[#1E1B4B]/40 uppercase tracking-wider mb-2">
+                            Story ID: <span className="font-mono normal-case">{storyId}</span>
+                          </p>
+
+                          {/* Pages grid */}
+                          <p className="text-xs font-bold text-[#1E1B4B]/40 uppercase tracking-wider mb-3">Story Pages</p>
+                          {pages.length === 0 ? (
+                            <p className="text-xs text-[#1E1B4B]/40 mb-4">Loading pages…</p>
+                          ) : (
+                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 mb-5">
+                              {pages.map((page: any) => {
+                                const imgUrl = page.jpeg_url || page.image_url || null;
+                                const pageLabel = page.page === 0 ? "Cover" :
+                                  page.page === pages.length - 1 ? "Back" : `Pg ${page.page}`;
+                                const pageStatus = page.status || "unknown";
+                                return (
+                                  <div key={page.id} className="flex flex-col gap-1.5">
+                                    <div className="rounded-xl overflow-hidden bg-[#F3E8FF] aspect-[3/4] relative">
+                                      {imgUrl ? (
+                                        <img
+                                          src={imgUrl}
+                                          alt={pageLabel}
+                                          className="w-full h-full object-cover"
+                                        />
+                                      ) : (
+                                        <div className="w-full h-full flex items-center justify-center">
+                                          <BookOpen className="w-6 h-6 text-[#1E1B4B]/20" strokeWidth={1.5} />
+                                        </div>
+                                      )}
+                                      <div className="absolute top-1 left-1">
+                                        <span className="text-[9px] font-bold bg-black/50 text-white rounded px-1 py-0.5">{pageLabel}</span>
+                                      </div>
+                                    </div>
+                                    <Badge className={`${PAGE_STATUS_COLORS[pageStatus] || "bg-[#1E1B4B]/10 text-[#1E1B4B]/50"} border-0 rounded-full px-2 py-0 text-[10px] font-semibold self-start`}>
+                                      {pageStatus}
+                                    </Badge>
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      disabled={retryingRefundPageId === page.id}
+                                      onClick={() => handleRefundRetryPage(storyId, page.id)}
+                                      className="rounded-full text-xs border-[#3730A3]/30 text-[#3730A3] hover:bg-[#3730A3]/10 h-7 px-3"
+                                    >
+                                      <RefreshCw className={`w-3 h-3 mr-1 ${retryingRefundPageId === page.id ? "animate-spin" : ""}`} strokeWidth={2} />
+                                      {retryingRefundPageId === page.id ? "Retrying…" : "Retry"}
+                                    </Button>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+
+                          {/* Generate PDF button */}
+                          <div className="flex items-center gap-3 pt-3 border-t border-[#F3E8FF]">
+                            <Button
+                              onClick={() => handleRefundRegeneratePdf(storyId)}
+                              disabled={regeneratingPdfForStory === storyId}
+                              className="rounded-full bg-[#3730A3] hover:bg-[#2e278f] text-white font-semibold gap-2"
+                            >
+                              <RefreshCw className={`w-4 h-4 ${regeneratingPdfForStory === storyId ? "animate-spin" : ""}`} strokeWidth={2.5} />
+                              {regeneratingPdfForStory === storyId ? "Queuing PDF…" : "Generate PDF"}
+                            </Button>
+                            <p className="text-xs text-[#1E1B4B]/40">
+                              Regenerates and replaces the existing PDF for this story.
+                            </p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>

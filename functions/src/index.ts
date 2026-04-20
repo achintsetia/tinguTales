@@ -9,20 +9,25 @@ export {deleteChildProfile} from "./deleteChildProfile.js";
 export {generateAvatarOnProfileCreate} from "./generateAvatarOnProfileCreate.js";
 export {retryAvatarGeneration} from "./retryAvatarGeneration.js";
 export {listGeminiModels} from "./listGeminiModels.js";
-export {getUserUploads, syncUploadUrls} from "./getUserUploads.js";
+export {getUserUploads} from "./getUserUploads.js";
+export {syncUploadUrls} from "./syncUploadUrls.js";
 export {deleteUserUpload} from "./deleteUserUpload.js";
 export {transliterateChildName} from "./transliterateChildName.js";
 export {generateStoryDraft} from "./generateStoryDraft.js";
 export {approveStoryDraft} from "./approveStoryDraft.js";
-export {generateScenes, retrySceneGeneration} from "./generateScenes.js";
-export {enqueuePageImageTask, processPageImage} from "./pageImageQueue.js";
-export {generateStorybookPdf} from "./pdfGeneration.js";
+export {generateScenes} from "./generateScenes.js";
+export {retrySceneGeneration} from "./retrySceneGeneration.js";
+export {enqueuePageImageTask} from "./enqueuePageImageTask.js";
+export {processPageImage} from "./processPageImage.js";
+export {generateStorybookPdf} from "./generateStorybookPdf.js";
 export {getAdminCostReport} from "./getAdminCostReport.js";
-export {adminRetryPageImage, adminRetryPdf, adminRetryFailedImageGeneration} from "./adminRetryTasks.js";
-export {redeemDiscountCoupon} from "./discountCoupons.js";
+export {adminRetryPageImage} from "./adminRetryPageImage.js";
+export {adminRetryPdf} from "./adminRetryPdf.js";
+export {adminRetryFailedImageGeneration} from "./adminRetryFailedImageGeneration.js";
+export {redeemDiscountCoupon} from "./redeemDiscountCoupon.js";
 export {deleteStory} from "./deleteStory.js";
-export {
-  createStoryPaymentOrder,
-  verifyStoryPayment,
-  markStoryPaymentFailed,
-} from "./storyPayments.js";
+export {recordPdfDownload} from "./recordPdfDownload.js";
+export {submitRefundRequest} from "./submitRefundRequest.js";
+export {createStoryPaymentOrder} from "./createStoryPaymentOrder.js";
+export {verifyStoryPayment} from "./verifyStoryPayment.js";
+export {markStoryPaymentFailed} from "./markStoryPaymentFailed.js";

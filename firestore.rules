@@ -63,6 +63,13 @@ service cloud.firestore {
       }
     }
 
+    // Refund requests — authenticated users can create their own; only admins can read/manage
+    match /refund_requests/{requestId} {
+      allow create: if request.auth != null
+        && request.resource.data.user_id == request.auth.uid;
+      allow read, update, delete: if isAdmin();
+    }
+
     // Payments — owner can read their own; admins can read all
     match /payments/{paymentId} {
       allow read: if request.auth != null && (
