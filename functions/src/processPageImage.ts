@@ -242,25 +242,31 @@ export const processPageImage = onTaskDispatched<PageImageTaskPayload>(
       logger.info(`[processPageImage] ${completedCount}/${totalExpected} pages completed for story ${storyId}`);
 
       if (allDone && completedCount >= totalExpected) {
-        // Check if a PDF already exists (admin retry scenario) — if so, skip the customer email
+        // Check if a PDF already exists — if so, this is an admin retry.
+        // Don't auto-generate PDF; admin will trigger it manually via adminRetryPdf.
         const storySnap = await db.collection("stories").doc(storyId).get();
         const existingPdfUrl: string = storySnap.data()?.pdf_url ?? "";
-        const skipEmail = existingPdfUrl.length > 0;
 
-        await db.collection("stories").doc(storyId).update({
-          status: "creating_pdf",
-          updated_at: FieldValue.serverTimestamp(),
-        });
-
-        try {
-          const queue = getFunctions().taskQueue("locations/asia-south1/functions/generateStorybookPdf");
-          await queue.enqueue(
-            {storyId, userId, totalPages: totalExpected, skipEmail},
-            {dispatchDeadlineSeconds: 600}
+        if (existingPdfUrl.length > 0) {
+          logger.info(
+            `[processPageImage] all pages done for story ${storyId} but PDF already exists — skipping auto PDF generation (admin retry)`
           );
-          logger.info(`[processPageImage] PDF task enqueued for story ${storyId} skipEmail=${skipEmail}`);
-        } catch (err) {
-          logger.error(`[processPageImage] failed to enqueue PDF task for story ${storyId}`, err);
+        } else {
+          await db.collection("stories").doc(storyId).update({
+            status: "creating_pdf",
+            updated_at: FieldValue.serverTimestamp(),
+          });
+
+          try {
+            const queue = getFunctions().taskQueue("locations/asia-south1/functions/generateStorybookPdf");
+            await queue.enqueue(
+              {storyId, userId, totalPages: totalExpected},
+              {dispatchDeadlineSeconds: 600}
+            );
+            logger.info(`[processPageImage] PDF task enqueued for story ${storyId}`);
+          } catch (err) {
+            logger.error(`[processPageImage] failed to enqueue PDF task for story ${storyId}`, err);
+          }
         }
       }
     } catch (err) {
