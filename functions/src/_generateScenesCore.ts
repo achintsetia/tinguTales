@@ -134,7 +134,10 @@ async function describeAvatarAsCharacterCard(
             "  \"hair\": \"e.g. black hair in two braids tied with red ribbons, neat middle parting\",\n" +
             "  \"accessories\": \"e.g. small gold stud earrings (or 'none')\",\n" +
             "  \"default_outfit\": \"e.g. bright blue kurta with white leggings and red dupatta\",\n" +
-            "  \"lower_garment\": \"REQUIRED — state the exact bottom garment with a specific color (e.g. white leggings, navy blue pants, red skirt, yellow dhoti). If the lower body is not visible or unclear in the image, INVENT a color that complements the top garment and state it explicitly as assumed (e.g. assumed navy blue pants). NEVER leave this vague — always provide an exact color and garment name.\"\n" +
+            "  \"lower_garment\": \"REQUIRED — exact bottom garment with specific color " +
+            "(e.g. white leggings, navy blue pants, red skirt, yellow dhoti). " +
+            "If lower body not visible, INVENT a complementary color and state it as assumed " +
+            "(e.g. assumed navy blue pants). NEVER leave vague.\"\n" +
             "}",
         },
       ],

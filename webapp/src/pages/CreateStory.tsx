@@ -927,7 +927,7 @@ export default function CreateStory() {
       // Close the dialog/backdrop before opening Razorpay so its overlay
       // doesn't intercept pointer and keyboard events on the checkout iframe.
       setShowApproveWarning(false);
-      await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+      await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
       razorpay.open();
     } catch (e: any) {
       toast.error(e?.message || "Could not start checkout");
@@ -1484,6 +1484,9 @@ export default function CreateStory() {
                         <Upload className="w-5 h-5 text-[#1E1B4B]/40" strokeWidth={2} />
                         <span className="text-sm text-[#1E1B4B]/50">
                           Upload a photo to create an AI avatar
+                          <span className="block text-xs text-[#FF9F1C]/80 mt-0.5">
+                            Tip: A full-body photo works best — it helps keep clothing consistent across all story pages
+                          </span>
                         </span>
                         <input
                           type="file"

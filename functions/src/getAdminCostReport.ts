@@ -19,6 +19,9 @@ const GEMINI_25_FLASH_OUTPUT_PER_M = 2.50;
 const GEMINI_20_FLASH_IMG_INPUT_PER_M = 0.10;
 const GEMINI_20_FLASH_IMG_OUTPUT_PER_M = 30.0;
 
+// page_image_generation — flat empirical cost per generated page image (~₹8/page at ₹96/$)
+const PAGE_IMAGE_GEN_COST_PER_CALL_USD = 8 / 96; // ≈ $0.0833
+
 // sarvam-30b  (used for story_qa_naturalize)
 const SARVAM_30B_INPUT_PER_M = 0.40;
 const SARVAM_30B_OUTPUT_PER_M = 1.60;
@@ -78,6 +81,10 @@ function calcCostUsd(record: UsageRecord): number {
         (inputTokens / 1_000_000) * GEMINI_20_FLASH_IMG_INPUT_PER_M +
         (outputTokens / 1_000_000) * GEMINI_20_FLASH_IMG_OUTPUT_PER_M
       );
+    }
+    if (task === "page_image_generation") {
+      // Each record = one generated page image; empirical cost ~₹8/page
+      return PAGE_IMAGE_GEN_COST_PER_CALL_USD;
     }
     // story_draft_generation: only total tokens recorded → estimate 70% input / 30% output
     const estInput = inputTokens > 0 ? inputTokens : Math.floor(tokens * 0.7);
