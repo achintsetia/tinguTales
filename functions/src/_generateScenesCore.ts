@@ -15,6 +15,7 @@ export interface CharacterCard {
   hair: string;
   accessories: string;
   default_outfit: string;
+  lower_garment: string;
 }
 
 export interface StoryEntityContext {
@@ -132,7 +133,8 @@ async function describeAvatarAsCharacterCard(
             "  \"face\": \"e.g. round face, large dark brown almond eyes, button nose, wide cheerful smile\",\n" +
             "  \"hair\": \"e.g. black hair in two braids tied with red ribbons, neat middle parting\",\n" +
             "  \"accessories\": \"e.g. small gold stud earrings (or 'none')\",\n" +
-            "  \"default_outfit\": \"e.g. bright blue kurta with white leggings and red dupatta\"\n" +
+            "  \"default_outfit\": \"e.g. bright blue kurta with white leggings and red dupatta\",\n" +
+            "  \"lower_garment\": \"REQUIRED — state the exact bottom garment with a specific color (e.g. white leggings, navy blue pants, red skirt, yellow dhoti). If the lower body is not visible or unclear in the image, INVENT a color that complements the top garment and state it explicitly as assumed (e.g. assumed navy blue pants). NEVER leave this vague — always provide an exact color and garment name.\"\n" +
             "}",
         },
       ],
@@ -162,6 +164,7 @@ async function describeAvatarAsCharacterCard(
         hair: "black hair, neat style",
         accessories: "none",
         default_outfit: "colourful Indian attire",
+        lower_garment: "navy blue pants",
       },
       tokens,
     };
@@ -309,6 +312,7 @@ async function generateScenePrompts(
     `Hair: ${card.hair}.`,
     `Accessories: ${card.accessories}.`,
     `Outfit: ${card.default_outfit}.`,
+    `Lower garment: ${card.lower_garment}.`,
   ].join("  ");
 
   const commonContextSection = commonContextEntities.length > 0 ?
@@ -343,6 +347,8 @@ async function generateScenePrompts(
     `3. Hair: ${card.hair} — same style, colour, and accessories every page.\n` +
     `4. Outfit: ${card.default_outfit} — keep this EXACT outfit on all pages; do NOT ` +
     "change clothing even for festivals or special events.\n" +
+    `4b. Lower garment: ${card.lower_garment} — this EXACT color and garment must appear on every page. ` +
+    "Even when partially hidden, any visible portion must match. Never substitute a different color or style.\n" +
     `5. Accessories: ${card.accessories} — always present, never swapped.\n\n` +
     commonContextSection +
     "PAGE-SPECIFIC RULES:\n" +
@@ -455,6 +461,7 @@ export async function runScenePipeline(storyId: string): Promise<void> {
     hair: "black hair, neat style",
     accessories: "none",
     default_outfit: "colourful Indian attire",
+    lower_garment: "navy blue pants",
   };
 
   const avatarGcsPath = `${userId}/${profileId}/avatar/avatar.jpg`;

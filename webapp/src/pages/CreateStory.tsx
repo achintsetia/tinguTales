@@ -886,6 +886,8 @@ export default function CreateStory() {
               });
             } catch {
               // Ignore network failure on dismissal.
+            } finally {
+              setCheckoutLoading(false);
             }
           },
         },
@@ -1125,10 +1127,12 @@ export default function CreateStory() {
                 <Input
                   value={couponCode}
                   onChange={(e) => setCouponCode(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter" && couponCode.trim() && !applyingCoupon) handleApplyCoupon(); }}
                   placeholder="Coupon code"
                   className="rounded-full border-[#F3E8FF]"
                 />
                 <Button
+                  type="button"
                   variant="outline"
                   className="rounded-full border-[#F3E8FF]"
                   disabled={applyingCoupon || !couponCode.trim()}
@@ -1149,7 +1153,7 @@ export default function CreateStory() {
             </Button>
             <Button
               className="flex-1 rounded-full bg-[#FF9F1C] hover:bg-[#E88A12] text-[#1E1B4B] font-bold"
-              disabled={checkoutLoading || approving}
+              disabled={checkoutLoading || approving || applyingCoupon}
               onClick={() => {
                 handlePaidApprove();
               }}

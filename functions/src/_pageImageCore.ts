@@ -121,6 +121,8 @@ export function buildIllustrationPrompt(payload: PageImageTaskPayload): string {
     `The protagonist is a ${card.gender || "child"} with ${card.skin_tone} skin tone. ` +
     `Face: ${card.face}. Hair: ${card.hair}. ` +
     `Accessories: ${card.accessories}. Outfit: ${card.default_outfit}. ` +
+    `Lower garment: ${card.lower_garment || "as shown in avatar reference"} — ` +
+    "this EXACT lower garment color and style must appear on EVERY page without exception. " +
     "CRITICAL: Keep the character's clothing EXACTLY as shown in the provided reference avatar image — " +
     "the top garment (shirt/top/blouse/kurta) and bottom garment (pants/skirt/lehenga/dhoti) must match " +
     "the avatar reference in colour, style, and pattern on every single page."
