@@ -922,6 +922,10 @@ export default function CreateStory() {
       });
 
       waitingForRazorpayCompletion = true;
+      // Close the dialog/backdrop before opening Razorpay so its overlay
+      // doesn't intercept pointer and keyboard events on the checkout iframe.
+      setShowApproveWarning(false);
+      await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
       razorpay.open();
     } catch (e: any) {
       toast.error(e?.message || "Could not start checkout");
@@ -2098,7 +2102,7 @@ export default function CreateStory() {
                 )}
 
                 <p className="text-[#1E1B4B]/50 mt-0 mb-6 text-sm text-center">
-                  Edit any page text below, then approve to create the illustrated storybook
+                  Edit any page text below, then approve to create the illustrated storybook. You can also <span className="font-semibold text-[#2A9D8F]">recreate the story</span> — images will auto-adapt to the new story.
                 </p>
 
                 <div className="space-y-4 max-w-2xl mx-auto">

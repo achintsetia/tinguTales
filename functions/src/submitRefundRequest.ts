@@ -2,7 +2,7 @@ import * as logger from "firebase-functions/logger";
 import {onCall, HttpsError} from "firebase-functions/v2/https";
 import {FieldValue} from "firebase-admin/firestore";
 import {admin, db} from "./admin.js";
-import {sendRefundRequestAdminEmail} from "./emailService.js";
+import {sendRefundRequestAdminEmail, sendRefundAcknowledgmentEmail} from "./emailService.js";
 
 interface SubmitRefundRequestData {
   storyId: string;
@@ -41,14 +41,29 @@ export const submitRefundRequest = onCall<SubmitRefundRequestData>(
       throw new HttpsError("permission-denied", "Not authorized to access this story.");
     }
 
-    await db.collection("refund_requests").add({
-      story_id: storyId,
-      user_id: userId,
-      story_title: storyData.title ?? "",
-      issue: issue.trim(),
-      status: "pending",
-      created_at: FieldValue.serverTimestamp(),
-    });
+    // Upsert: one refund request per story — update if already exists
+    const existingSnap = await db.collection("refund_requests")
+      .where("story_id", "==", storyId)
+      .where("user_id", "==", userId)
+      .limit(1)
+      .get();
+
+    if (!existingSnap.empty) {
+      await existingSnap.docs[0].ref.update({
+        issue: issue.trim(),
+        status: "pending",
+        updated_at: FieldValue.serverTimestamp(),
+      });
+    } else {
+      await db.collection("refund_requests").add({
+        story_id: storyId,
+        user_id: userId,
+        story_title: storyData.title ?? "",
+        issue: issue.trim(),
+        status: "pending",
+        created_at: FieldValue.serverTimestamp(),
+      });
+    }
 
     // Resolve user email for admin notification (best-effort)
     let userEmail = "";
@@ -66,6 +81,20 @@ export const submitRefundRequest = onCall<SubmitRefundRequestData>(
       storyTitle: storyData.title ?? "",
       issue: issue.trim(),
     });
+
+    // Send acknowledgment to the user (best-effort, non-fatal)
+    if (userEmail) {
+      try {
+        await sendRefundAcknowledgmentEmail({
+          userEmail,
+          storyTitle: storyData.title ?? "Your Storybook",
+          childName: storyData.child_name ?? "your child",
+          storyId,
+        });
+      } catch (emailErr) {
+        logger.warn("[submitRefundRequest] user acknowledgment email failed (non-fatal)", emailErr);
+      }
+    }
 
     logger.info(`[submitRefundRequest] storyId=${storyId} userId=${userId}`);
     return {success: true};

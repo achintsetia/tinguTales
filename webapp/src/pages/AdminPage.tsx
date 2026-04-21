@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { db } from "../firebase";
 import { getFunctions, httpsCallable } from "firebase/functions";
-import { collection, getDocs, doc, getDoc, setDoc, deleteDoc, query, orderBy, where } from "firebase/firestore";
+import { collection, getDocs, doc, getDoc, setDoc, deleteDoc, query, orderBy, where, onSnapshot } from "firebase/firestore";
 import { toast } from "sonner";
 import { Button } from "../components/ui/button";
 import { Card, CardContent } from "../components/ui/card";
@@ -12,7 +12,7 @@ import { Switch } from "../components/ui/switch";
 import { Input } from "../components/ui/input";
 import {
   ArrowLeft, Trash2, RefreshCw, DollarSign, Users, BookOpen,
-  Activity, Undo2, Bot, ChevronDown, ChevronUp, IndianRupee, User, Baby, Search, Mail, AlertCircle
+  Activity, Undo2, Bot, ChevronDown, ChevronUp, IndianRupee, User, Baby, Search, Mail, AlertCircle, X, ZoomIn, Pencil, Check
 } from "lucide-react";
 
 const ADMIN_TAB_STORAGE_KEY = "admin_active_tab";
@@ -73,8 +73,16 @@ export default function AdminPage() {
   const [loadingRefunds, setLoadingRefunds] = useState(false);
   const [expandedRefundId, setExpandedRefundId] = useState<string | null>(null);
   const [refundPagesByStory, setRefundPagesByStory] = useState<Record<string, any[]>>({});
+  const [refundStoryPdfByStory, setRefundStoryPdfByStory] = useState<Record<string, string>>({});
   const [retryingRefundPageId, setRetryingRefundPageId] = useState<string | null>(null);
   const [regeneratingPdfForStory, setRegeneratingPdfForStory] = useState<string | null>(null);
+  const [sendingCorrectionEmail, setSendingCorrectionEmail] = useState<string | null>(null);
+  const [issuingRefund, setIssuingRefund] = useState<string | null>(null);
+  const [closingRefundRequest, setClosingRefundRequest] = useState<string | null>(null);
+  const [lightbox, setLightbox] = useState<{ url: string; text: string; label: string } | null>(null);
+  const [pageTextEdits, setPageTextEdits] = useState<Record<string, string>>({});
+  const [editingPageId, setEditingPageId] = useState<string | null>(null);
+  const [savingPageTextId, setSavingPageTextId] = useState<string | null>(null);
 
   // Coupons tab state
   const [coupons, setCoupons] = useState<any[]>([]);
@@ -255,15 +263,22 @@ export default function AdminPage() {
   useEffect(() => {
     if (!user?.is_admin) return;
     const storageKey = `${ADMIN_TAB_STORAGE_KEY}:${user.id || "unknown"}`;
+    let savedTab = "overview";
     try {
-      const savedTab = localStorage.getItem(storageKey) || "overview";
-      if (ADMIN_TAB_IDS.includes(savedTab as typeof ADMIN_TAB_IDS[number])) {
-        setTab(savedTab);
-      }
+      savedTab = localStorage.getItem(storageKey) || "overview";
+      if (!ADMIN_TAB_IDS.includes(savedTab as typeof ADMIN_TAB_IDS[number])) savedTab = "overview";
+      setTab(savedTab);
     } catch {
       // Some browsers/privacy modes can block localStorage access.
       setTab("overview");
     }
+    // Trigger data fetch for the restored tab (same logic as handleTabChange)
+    if (savedTab === "costs" && !costReport) fetchCosts();
+    if (savedTab === "whitelist") fetchWhitelistData();
+    if (savedTab === "coupons") fetchCoupons();
+    if (savedTab === "failed-image-generation") fetchFailedImageGenerations();
+    if (savedTab === "contacts") fetchContacts();
+    if (savedTab === "refund-requests") fetchRefundRequests();
   }, [user?.id, user?.is_admin]);
 
   useEffect(() => {
@@ -373,11 +388,14 @@ export default function AdminPage() {
   const fetchRefundStoryPages = async (storyId: string) => {
     if (refundPagesByStory[storyId]) return;
     try {
-      const snap = await getDocs(
-        query(collection(db, "stories", storyId, "pages"), orderBy("page", "asc"))
-      );
-      const pages = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      const [pagesSnap, storySnap] = await Promise.all([
+        getDocs(query(collection(db, "stories", storyId, "pages"), orderBy("page", "asc"))),
+        getDoc(doc(db, "stories", storyId)),
+      ]);
+      const pages = pagesSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
       setRefundPagesByStory((prev) => ({ ...prev, [storyId]: pages }));
+      const pdfUrl: string = storySnap.data()?.pdf_url ?? "";
+      if (pdfUrl) setRefundStoryPdfByStory((prev) => ({ ...prev, [storyId]: pdfUrl }));
     } catch {
       toast.error("Failed to load story pages");
     }
@@ -385,17 +403,37 @@ export default function AdminPage() {
 
   const handleRefundRetryPage = async (storyId: string, pageId: string) => {
     setRetryingRefundPageId(pageId);
+    // Optimistically mark just this page as regenerating so others stay visible
+    setRefundPagesByStory((prev) => ({
+      ...prev,
+      [storyId]: (prev[storyId] ?? []).map((p) =>
+        p.id === pageId ? { ...p, status: "pending", image_url: null, jpeg_url: null } : p
+      ),
+    }));
     try {
       const fns = getFunctions(undefined, "asia-south1");
       const retryFn = httpsCallable(fns, "adminRetryPageImage");
       await retryFn({ storyId, pageId });
       toast.success("Page re-queued for generation");
-      // Refresh pages for this story
-      setRefundPagesByStory((prev) => { const next = { ...prev }; delete next[storyId]; return next; });
-      await fetchRefundStoryPages(storyId);
+      // Listen for the page to complete — skip the first emission (current state)
+      let firstEmit = true;
+      const unsub = onSnapshot(doc(db, "stories", storyId, "pages", pageId), (snap) => {
+        if (firstEmit) { firstEmit = false; return; }
+        if (!snap.exists()) return;
+        const data = snap.data();
+        if (data.status === "completed" || data.image_url || data.jpeg_url) {
+          setRefundPagesByStory((prev) => ({
+            ...prev,
+            [storyId]: (prev[storyId] ?? []).map((p) =>
+              p.id === pageId ? { ...p, ...data, id: pageId } : p
+            ),
+          }));
+          setRetryingRefundPageId(null);
+          unsub();
+        }
+      });
     } catch (e: any) {
       toast.error(e?.message || "Retry failed");
-    } finally {
       setRetryingRefundPageId(null);
     }
   };
@@ -406,11 +444,105 @@ export default function AdminPage() {
       const fns = getFunctions(undefined, "asia-south1");
       const retryFn = httpsCallable(fns, "adminRetryPdf");
       await retryFn({ storyId });
-      toast.success("PDF regeneration queued — new PDF will replace the old one");
+      toast.success("PDF regeneration queued — refresh the link once it's ready");
+      // Poll the story doc every 5 s until pdf_url updates (up to ~2 min)
+      let attempts = 0;
+      const poll = async () => {
+        attempts++;
+        const storySnap = await getDoc(doc(db, "stories", storyId));
+        const pdfUrl: string = storySnap.data()?.pdf_url ?? "";
+        const prevUrl = refundStoryPdfByStory[storyId] ?? "";
+        if (pdfUrl && pdfUrl !== prevUrl) {
+          setRefundStoryPdfByStory((prev) => ({ ...prev, [storyId]: pdfUrl }));
+          toast.success("PDF is ready — review the link below");
+        } else if (attempts < 24) {
+          setTimeout(poll, 5000);
+        }
+      };
+      setTimeout(poll, 5000);
     } catch (e: any) {
       toast.error(e?.message || "PDF regeneration failed");
     } finally {
       setRegeneratingPdfForStory(null);
+    }
+  };
+
+  const handleIssueRefund = async (refundRequestId: string) => {
+    if (!window.confirm("Issue a full Razorpay refund for this payment? This cannot be undone.")) return;
+    setIssuingRefund(refundRequestId);
+    try {
+      const fns = getFunctions(undefined, "asia-south1");
+      const issueFn = httpsCallable<{ refundRequestId: string }, { success: boolean; razorpayRefundId: unknown }>(fns, "adminIssueRefund");
+      const result = await issueFn({ refundRequestId });
+      toast.success(`Refund issued — Razorpay ID: ${result.data.razorpayRefundId}`);
+      // Update local state to reflect new status
+      setRefundRequests((prev) => prev.map((r) => r.id === refundRequestId ? { ...r, status: "refunded" } : r));
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to issue refund");
+    } finally {
+      setIssuingRefund(null);
+    }
+  };
+
+  const handleCloseRefundRequest = async (refundRequestId: string) => {
+    if (!window.confirm("Close this refund request without issuing a refund?")) return;
+    setClosingRefundRequest(refundRequestId);
+    try {
+      const fns = getFunctions(undefined, "asia-south1");
+      const closeFn = httpsCallable<{ refundRequestId: string }, { success: boolean }>(fns, "adminCloseRefundRequest");
+      await closeFn({ refundRequestId });
+      toast.success("Refund request closed");
+      setRefundRequests((prev) => prev.map((r) => r.id === refundRequestId ? { ...r, status: "closed" } : r));
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to close refund request");
+    } finally {
+      setClosingRefundRequest(null);
+    }
+  };
+
+  const handleSendCorrectionEmail = async (storyId: string) => {
+    setSendingCorrectionEmail(storyId);
+    try {
+      const fns = getFunctions(undefined, "asia-south1");
+      const sendFn = httpsCallable<{ storyId: string }, { success: boolean; userEmail: string }>(fns, "adminSendCorrectionEmail");
+      const result = await sendFn({ storyId });
+      toast.success(`Correction email sent to ${result.data.userEmail}`);
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to send correction email");
+    } finally {
+      setSendingCorrectionEmail(null);
+    }
+  };
+
+  const handleSavePageText = async (storyId: string, page: any) => {
+    const key = `${storyId}:${page.id}`;
+    const newText = pageTextEdits[key] ?? "";
+    setSavingPageTextId(page.id);
+    try {
+      const fns = getFunctions(undefined, "asia-south1");
+      const updateFn = httpsCallable(fns, "adminUpdatePageText");
+      const payload: Record<string, string> = { storyId, pageId: page.id, text: newText };
+      if (page.page === 0) {
+        const lines = newText.split("\n");
+        payload.coverTitle = lines[0] ?? "";
+        payload.coverSubtitle = lines.slice(1).join("\n");
+      }
+      await updateFn(payload);
+      // Update local cache so the new text shows immediately
+      setRefundPagesByStory((prev) => ({
+        ...prev,
+        [storyId]: prev[storyId].map((p) =>
+          p.id === page.id
+            ? { ...p, text: newText, ...(page.page === 0 ? { cover_title: newText.split("\n")[0] ?? "", cover_subtitle: newText.split("\n").slice(1).join("\n") } : {}) }
+            : p
+        ),
+      }));
+      setEditingPageId(null);
+      toast.success("Page text updated");
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to update page text");
+    } finally {
+      setSavingPageTextId(null);
     }
   };
 
@@ -1159,7 +1291,11 @@ export default function AdminPage() {
                           </p>
                         </div>
                         <div className="flex flex-col items-end gap-1 flex-shrink-0">
-                          <Badge className="bg-[#E76F51]/15 text-[#E76F51] border-0 rounded-full px-2.5 py-0.5 text-xs font-semibold">
+                          <Badge className={`border-0 rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+                            r.status === "refunded" ? "bg-[#2A9D8F]/15 text-[#2A9D8F]" :
+                            r.status === "closed" ? "bg-[#1E1B4B]/10 text-[#1E1B4B]/50" :
+                            "bg-[#E76F51]/15 text-[#E76F51]"
+                          }`}>
                             {r.status || "pending"}
                           </Badge>
                           {isExpanded
@@ -1195,13 +1331,19 @@ export default function AdminPage() {
                                 const pageStatus = page.status || "unknown";
                                 return (
                                   <div key={page.id} className="flex flex-col gap-1.5">
-                                    <div className="rounded-xl overflow-hidden bg-[#F3E8FF] aspect-[3/4] relative">
+                                    <div className="rounded-xl overflow-hidden bg-[#F3E8FF] aspect-[3/4] relative group">
                                       {imgUrl ? (
                                         <img
                                           src={imgUrl}
                                           alt={pageLabel}
-                                          className="w-full h-full object-cover"
+                                          className="w-full h-full object-cover cursor-zoom-in"
+                                          onClick={() => setLightbox({ url: imgUrl, text: page.page === 0 ? [page.cover_title, page.cover_subtitle].filter(Boolean).join("\n") || page.text || "" : page.text || "", label: pageLabel })}
                                         />
+                                      ) : retryingRefundPageId === page.id ? (
+                                        <div className="w-full h-full flex flex-col items-center justify-center gap-2">
+                                          <RefreshCw className="w-6 h-6 text-[#3730A3]/40 animate-spin" strokeWidth={1.5} />
+                                          <span className="text-[10px] text-[#1E1B4B]/40">Generating…</span>
+                                        </div>
                                       ) : (
                                         <div className="w-full h-full flex items-center justify-center">
                                           <BookOpen className="w-6 h-6 text-[#1E1B4B]/20" strokeWidth={1.5} />
@@ -1210,10 +1352,67 @@ export default function AdminPage() {
                                       <div className="absolute top-1 left-1">
                                         <span className="text-[9px] font-bold bg-black/50 text-white rounded px-1 py-0.5">{pageLabel}</span>
                                       </div>
+                                      {imgUrl && (
+                                        <button
+                                          onClick={() => setLightbox({ url: imgUrl, text: page.page === 0 ? [page.cover_title, page.cover_subtitle].filter(Boolean).join("\n") || page.text || "" : page.text || "", label: pageLabel })}
+                                          className="absolute bottom-1 right-1 bg-black/50 hover:bg-black/70 text-white rounded p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                                        >
+                                          <ZoomIn className="w-3.5 h-3.5" strokeWidth={2} />
+                                        </button>
+                                      )}
                                     </div>
                                     <Badge className={`${PAGE_STATUS_COLORS[pageStatus] || "bg-[#1E1B4B]/10 text-[#1E1B4B]/50"} border-0 rounded-full px-2 py-0 text-[10px] font-semibold self-start`}>
                                       {pageStatus}
                                     </Badge>
+
+                                    {/* Inline text editor */}
+                                    {editingPageId === page.id ? (
+                                      <div className="flex flex-col gap-1">
+                                        <textarea
+                                          className="text-[10px] text-[#1E1B4B] leading-relaxed bg-white border border-[#3730A3]/40 rounded-lg p-1.5 w-full resize-none focus:outline-none focus:ring-1 focus:ring-[#3730A3]/50"
+                                          rows={4}
+                                          value={pageTextEdits[`${storyId}:${page.id}`] ?? ""}
+                                          onChange={(e) => setPageTextEdits((prev) => ({ ...prev, [`${storyId}:${page.id}`]: e.target.value }))}
+                                        />
+                                        <div className="flex gap-1">
+                                          <Button
+                                            size="sm"
+                                            disabled={savingPageTextId === page.id}
+                                            onClick={() => handleSavePageText(storyId, page)}
+                                            className="rounded-full text-[10px] h-6 px-2 bg-[#3730A3] hover:bg-[#2e278f] text-white gap-1 flex-1"
+                                          >
+                                            <Check className={`w-2.5 h-2.5 ${savingPageTextId === page.id ? "animate-pulse" : ""}`} strokeWidth={2.5} />
+                                            {savingPageTextId === page.id ? "Saving…" : "Save"}
+                                          </Button>
+                                          <Button
+                                            variant="outline"
+                                            size="sm"
+                                            disabled={savingPageTextId === page.id}
+                                            onClick={() => setEditingPageId(null)}
+                                            className="rounded-full text-[10px] h-6 px-2 border-[#1E1B4B]/20 text-[#1E1B4B]/50"
+                                          >
+                                            Cancel
+                                          </Button>
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => {
+                                          const currentText = page.page === 0
+                                            ? [page.cover_title, page.cover_subtitle].filter(Boolean).join("\n") || page.text || ""
+                                            : page.text || "";
+                                          setPageTextEdits((prev) => ({ ...prev, [`${storyId}:${page.id}`]: currentText }));
+                                          setEditingPageId(page.id);
+                                        }}
+                                        className="rounded-full text-[10px] border-[#E76F51]/30 text-[#E76F51] hover:bg-[#E76F51]/10 h-6 px-2 gap-1"
+                                      >
+                                        <Pencil className="w-2.5 h-2.5" strokeWidth={2} />
+                                        Edit Text
+                                      </Button>
+                                    )}
+
                                     <Button
                                       variant="outline"
                                       size="sm"
@@ -1230,20 +1429,63 @@ export default function AdminPage() {
                             </div>
                           )}
 
-                          {/* Generate PDF button */}
-                          <div className="flex items-center gap-3 pt-3 border-t border-[#F3E8FF]">
+                          {/* Generate PDF + Send Correction Email */}
+                          <div className="flex flex-wrap items-center gap-3 pt-3 border-t border-[#F3E8FF]">
                             <Button
                               onClick={() => handleRefundRegeneratePdf(storyId)}
                               disabled={regeneratingPdfForStory === storyId}
                               className="rounded-full bg-[#3730A3] hover:bg-[#2e278f] text-white font-semibold gap-2"
                             >
                               <RefreshCw className={`w-4 h-4 ${regeneratingPdfForStory === storyId ? "animate-spin" : ""}`} strokeWidth={2.5} />
-                              {regeneratingPdfForStory === storyId ? "Queuing PDF…" : "Generate PDF"}
+                              {regeneratingPdfForStory === storyId ? "Queuing PDF…" : "Regenerate PDF"}
                             </Button>
-                            <p className="text-xs text-[#1E1B4B]/40">
-                              Regenerates and replaces the existing PDF for this story.
+                            <Button
+                              onClick={() => handleSendCorrectionEmail(storyId)}
+                              disabled={sendingCorrectionEmail === storyId}
+                              variant="outline"
+                              className="rounded-full border-[#2A9D8F] text-[#2A9D8F] hover:bg-[#2A9D8F]/10 font-semibold gap-2"
+                            >
+                              <Mail className={`w-4 h-4 ${sendingCorrectionEmail === storyId ? "animate-pulse" : ""}`} strokeWidth={2} />
+                              {sendingCorrectionEmail === storyId ? "Sending…" : "Send Correction Email"}
+                            </Button>
+                            {refundStoryPdfByStory[storyId] ? (
+                              <a
+                                href={refundStoryPdfByStory[storyId]}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1.5 text-xs font-medium text-[#3730A3] underline underline-offset-2 hover:text-[#2e278f] w-full"
+                              >
+                                📄 Review PDF
+                              </a>
+                            ) : null}
+                            <p className="text-xs text-[#1E1B4B]/40 w-full">
+                              Regenerate first, review the PDF, then send the correction email to notify the user.
                             </p>
                           </div>
+
+                          {/* Issue Refund + Close Request */}
+                          {r.status !== "refunded" && r.status !== "closed" && (
+                            <div className="flex flex-wrap items-center gap-3 pt-3 mt-3 border-t border-[#F3E8FF]">
+                              <Button
+                                onClick={() => handleIssueRefund(r.id)}
+                                disabled={issuingRefund === r.id}
+                                variant="outline"
+                                className="rounded-full border-[#E76F51] text-[#E76F51] hover:bg-[#E76F51]/10 font-semibold gap-2"
+                              >
+                                <IndianRupee className={`w-4 h-4 ${issuingRefund === r.id ? "animate-pulse" : ""}`} strokeWidth={2} />
+                                {issuingRefund === r.id ? "Issuing Refund…" : "Issue Refund"}
+                              </Button>
+                              <Button
+                                onClick={() => handleCloseRefundRequest(r.id)}
+                                disabled={closingRefundRequest === r.id}
+                                variant="outline"
+                                className="rounded-full border-[#1E1B4B]/30 text-[#1E1B4B]/60 hover:bg-[#1E1B4B]/5 font-semibold gap-2"
+                              >
+                                <X className={`w-4 h-4 ${closingRefundRequest === r.id ? "animate-pulse" : ""}`} strokeWidth={2} />
+                                {closingRefundRequest === r.id ? "Closing…" : "Close Request"}
+                              </Button>
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
@@ -1251,6 +1493,37 @@ export default function AdminPage() {
                 })}
               </div>
             )}
+          </div>
+        )}
+
+        {/* Lightbox */}
+        {lightbox && (
+          <div
+            className="fixed inset-0 z-[999] bg-black/85 flex items-center justify-center p-4"
+            onClick={() => setLightbox(null)}
+          >
+            <button
+              onClick={() => setLightbox(null)}
+              className="absolute top-4 right-4 text-white/70 hover:text-white bg-white/10 hover:bg-white/20 rounded-full p-2 transition-colors"
+            >
+              <X className="w-5 h-5" strokeWidth={2} />
+            </button>
+            <div
+              className="relative max-h-[90vh] max-w-[90vw]"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <img
+                src={lightbox.url}
+                alt={lightbox.label}
+                className="max-h-[90vh] max-w-[90vw] object-contain rounded-2xl shadow-2xl block"
+              />
+              {lightbox.text && (
+                <div className="absolute bottom-0 left-0 right-0 rounded-b-2xl bg-black/60 backdrop-blur-sm px-4 py-3">
+                  <p className="text-[11px] font-semibold text-white/50 uppercase tracking-wider mb-1">{lightbox.label}</p>
+                  <p className="text-sm text-white leading-relaxed whitespace-pre-wrap">{lightbox.text}</p>
+                </div>
+              )}
+            </div>
           </div>
         )}
 

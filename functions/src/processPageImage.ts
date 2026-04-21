@@ -242,6 +242,11 @@ export const processPageImage = onTaskDispatched<PageImageTaskPayload>(
       logger.info(`[processPageImage] ${completedCount}/${totalExpected} pages completed for story ${storyId}`);
 
       if (allDone && completedCount >= totalExpected) {
+        // Check if a PDF already exists (admin retry scenario) — if so, skip the customer email
+        const storySnap = await db.collection("stories").doc(storyId).get();
+        const existingPdfUrl: string = storySnap.data()?.pdf_url ?? "";
+        const skipEmail = existingPdfUrl.length > 0;
+
         await db.collection("stories").doc(storyId).update({
           status: "creating_pdf",
           updated_at: FieldValue.serverTimestamp(),
@@ -250,10 +255,10 @@ export const processPageImage = onTaskDispatched<PageImageTaskPayload>(
         try {
           const queue = getFunctions().taskQueue("locations/asia-south1/functions/generateStorybookPdf");
           await queue.enqueue(
-            {storyId, userId, totalPages: totalExpected},
+            {storyId, userId, totalPages: totalExpected, skipEmail},
             {dispatchDeadlineSeconds: 600}
           );
-          logger.info(`[processPageImage] PDF task enqueued for story ${storyId}`);
+          logger.info(`[processPageImage] PDF task enqueued for story ${storyId} skipEmail=${skipEmail}`);
         } catch (err) {
           logger.error(`[processPageImage] failed to enqueue PDF task for story ${storyId}`, err);
         }

@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { db, functions } from "../firebase";
-import { doc as firestoreDoc, collection, onSnapshot } from "firebase/firestore";
+import { doc as firestoreDoc, collection, onSnapshot, updateDoc, serverTimestamp } from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
 import { toast } from "sonner";
 import { Button } from "../components/ui/button";
@@ -54,18 +54,23 @@ export default function StoryViewer() {
   const [zoomedPage, setZoomedPage] = useState(null);  // index of page shown in lightbox
   const [showReveal, setShowReveal] = useState(true);  // show back cover reveal before flipbook
   const [livePages, setLivePages] = useState<{page_number: number; image_url: string | null; jpeg_url: string | null; text?: string; status?: string}[]>([]);
-  const [allLooksGood, setAllLooksGood] = useState(false);  // user confirmed quality check
+  const [allLooksGood, setAllLooksGood] = useState(false);  // user confirmed quality check — persisted in Firestore
   const [showRefundForm, setShowRefundForm] = useState(false);
   const [refundIssue, setRefundIssue] = useState("");
   const [submittingRefund, setSubmittingRefund] = useState(false);
   const [refundSubmitted, setRefundSubmitted] = useState(false); // real-time page images from subcollection
+  const [showCloseHint, setShowCloseHint] = useState(false); // shown after 2 min of generating
 
   useEffect(() => {
     if (!storyId) return;
     const unsub = onSnapshot(
       firestoreDoc(db, "stories", storyId),
       (snap) => {
-        if (snap.exists()) setStory({ story_id: snap.id, ...snap.data() });
+        if (snap.exists()) {
+          const data = snap.data();
+          setStory({ story_id: snap.id, ...data });
+          if (data.quality_confirmed_at) setAllLooksGood(true);
+        }
         setLoading(false);
       },
       (e) => {
@@ -100,6 +105,14 @@ export default function StoryViewer() {
     );
     return () => unsub();
   }, [storyId]);
+
+  // Show "you can close this" hint after 2 minutes of generating
+  useEffect(() => {
+    const isGenerating = story && story.status !== "completed" && story.status !== "failed" && story.status !== "scenes_failed";
+    if (!isGenerating) { setShowCloseHint(false); return; }
+    const timer = setTimeout(() => setShowCloseHint(true), 2 * 60 * 1000);
+    return () => clearTimeout(timer);
+  }, [story?.status]);
 
   // Cycle magic messages
   useEffect(() => {
@@ -380,9 +393,18 @@ export default function StoryViewer() {
             })()}</DialogContent>
         </Dialog>
 
-        <p className="text-xs text-[#1E1B4B]/25 mt-8 text-center">
-            This usually takes 10-15 minutes. Sit tight!
-        </p>
+        {showCloseHint ? (
+          <div className="mt-8 max-w-sm mx-auto text-center bg-[#3730A3]/5 border border-[#3730A3]/15 rounded-2xl px-5 py-4">
+            <p className="text-sm font-semibold text-[#3730A3] mb-1">Feel free to close this tab</p>
+            <p className="text-xs text-[#1E1B4B]/55 leading-relaxed">
+              We'll send you an email when your storybook is ready. You can come back and download it anytime from your dashboard.
+            </p>
+          </div>
+        ) : (
+          <p className="text-xs text-[#1E1B4B]/25 mt-8 text-center">
+            This usually takes 10–15 minutes. Sit tight!
+          </p>
+        )}
       </div>
     );
   }
@@ -769,6 +791,8 @@ export default function StoryViewer() {
         {/* Quality check side panel */}
         <div className="w-full lg:w-72 xl:w-80 shrink-0 lg:mt-4">
           <div className="rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 p-5 text-white">
+            {!allLooksGood ? (
+              <>
             <div className="flex items-start gap-3 mb-4">
               <div className="w-8 h-8 rounded-full bg-[#FF9F1C]/20 flex items-center justify-center shrink-0 mt-0.5">
                 <Star className="w-4 h-4 text-[#FF9F1C]" fill="currentColor" />
@@ -778,18 +802,26 @@ export default function StoryViewer() {
                   Review your storybook
                 </h3>
                 <p className="text-white/70 text-xs leading-relaxed">
-                  Please check all the pages and details of the book. If you notice any defect or issue, you can request a refund.
+                  AI can make mistakes — please review every page carefully. Only after you press <span className="text-white font-medium">All Looks Good</span> will your PDF download link become available. If you spot any defect, you can request a refund instead.
                 </p>
               </div>
             </div>
 
-            {!allLooksGood ? (
-              <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-3">
                 {!showRefundForm && !refundSubmitted && (
                   <>
                     <Button
                       data-testid="btn-all-looks-good"
-                      onClick={() => setAllLooksGood(true)}
+                      onClick={async () => {
+                        setAllLooksGood(true);
+                        try {
+                          await updateDoc(firestoreDoc(db, "stories", storyId!), {
+                            quality_confirmed_at: serverTimestamp(),
+                          });
+                        } catch (e) {
+                          console.warn("Failed to persist quality confirmation", e);
+                        }
+                      }}
                       className="w-full rounded-full bg-[#2A9D8F] hover:bg-[#23877B] text-white font-semibold min-h-[44px] gap-2"
                     >
                       <Star className="w-4 h-4" fill="currentColor" strokeWidth={0} />
@@ -810,6 +842,9 @@ export default function StoryViewer() {
                   <div className="flex flex-col gap-3">
                     <p className="text-white/80 text-xs leading-relaxed">
                       Our team will review your refund request and only if there are any defects present, will process you the refund.
+                    </p>
+                    <p className="text-white/60 text-xs leading-relaxed">
+                      Since the pages are AI-generated, AI can sometimes make mistakes. If we find any defective pages, we'll correct them and resend you an updated storybook link.
                     </p>
                     <textarea
                       placeholder="Describe the issue you noticed…"
@@ -838,12 +873,16 @@ export default function StoryViewer() {
                 {refundSubmitted && (
                   <div className="rounded-xl bg-white/10 border border-white/20 p-4 text-center">
                     <p className="text-white/90 text-sm font-medium mb-1">Request submitted!</p>
-                    <p className="text-white/55 text-xs leading-relaxed">
-                      Our team will review your refund request and only if there are any defects present, will process you the refund.
+                    <p className="text-white/55 text-xs leading-relaxed mb-2">
+                      Our team will review your request and only if defects are found, will process a refund.
+                    </p>
+                    <p className="text-white/45 text-xs leading-relaxed">
+                      Since the pages are AI-generated, AI can sometimes make mistakes. If there are any defective pages, we'll correct them and resend you an updated storybook link.
                     </p>
                   </div>
                 )}
               </div>
+              </>
             ) : (
               <div className="flex flex-col gap-3">
                 <p className="text-[#2A9D8F] text-xs font-medium flex items-center gap-1.5">

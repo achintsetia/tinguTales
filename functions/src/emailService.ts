@@ -67,6 +67,60 @@ async function send(opts: {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
+ * Acknowledge the user's refund request with next-steps messaging.
+ * @param {object} opts - The function options.
+ */
+export async function sendRefundAcknowledgmentEmail(opts: {
+  userEmail: string;
+  storyTitle: string;
+  childName: string;
+  storyId: string;
+}): Promise<void> {
+  if (!opts.userEmail) {
+    logger.warn("[emailService] sendRefundAcknowledgmentEmail called with empty userEmail — skipping");
+    return;
+  }
+
+  const {userEmail, storyTitle, childName, storyId} = opts;
+  const viewerUrl = `https://app.tingutales.com/story/${storyId}`;
+
+  await send({
+    to: userEmail,
+    subject: `We've received your request for "${storyTitle}"`,
+    html: `
+      <div style="font-family:sans-serif;max-width:600px;margin:0 auto;color:#1E1B4B">
+        <h2 style="color:#FF9F1C">We've received your request 📬</h2>
+        <p>Hi there,</p>
+        <p>
+          Thanks for reaching out about <strong>${escapeHtml(storyTitle)}</strong> for
+          ${escapeHtml(childName)}. Our team will review your request and, only if defects are
+          found, will process a refund for you.
+        </p>
+        <p>
+          Since the pages are AI-generated, we understand that AI can sometimes make mistakes.
+          If there are any defective pages, we will correct them and resend you an updated
+          storybook link — so your little one gets the perfect story they deserve!
+        </p>
+        <p style="margin-top:24px">
+          In the meantime, you can still view your storybook online:
+        </p>
+        <div style="text-align:center;margin:24px 0">
+          <a href="${viewerUrl}"
+             style="background:#FF9F1C;color:#1E1B4B;font-weight:bold;padding:14px 28px;border-radius:999px;text-decoration:none;display:inline-block">
+            View Storybook →
+          </a>
+        </div>
+        <hr style="border:0;border-top:1px solid #F3E8FF;margin:28px 0" />
+        <p style="color:#888;font-size:12px;text-align:center">
+          TinguTales — personalised storybooks for your little one.<br/>
+          If you didn't submit this request, please ignore this email.
+        </p>
+      </div>
+    `,
+  });
+}
+
+/**
  * Notify the admin when a user submits a refund request.
  * @param {object} opts - The function options.
  */
@@ -116,14 +170,21 @@ export async function sendPdfReadyEmail(opts: {
   childName: string;
   pdfUrl: string;
   storyId: string;
+  coverImageUrl?: string | null;
 }): Promise<void> {
   if (!opts.userEmail) {
     logger.warn("[emailService] sendPdfReadyEmail called with empty userEmail — skipping");
     return;
   }
 
-  const {userEmail, storyTitle, childName, pdfUrl, storyId} = opts;
-  const viewerUrl = `https://app.tingutales.com/story/${storyId}`;
+  const {userEmail, storyTitle, childName, storyId, coverImageUrl} = opts;
+  const viewerUrl = `https://tingutales.com/story/${storyId}`;
+  const coverImgHtml = coverImageUrl ?
+    `<div style="text-align:center;margin:20px 0">
+        <img src="${coverImageUrl}" alt="Story cover" width="260"
+             style="border-radius:16px;box-shadow:0 4px 20px rgba(0,0,0,0.12);max-width:100%" />
+       </div>` :
+    "";
 
   await send({
     to: userEmail,
@@ -133,18 +194,71 @@ export async function sendPdfReadyEmail(opts: {
         <h2 style="color:#FF9F1C">🎉 ${escapeHtml(storyTitle)} is ready!</h2>
         <p>Hi there,</p>
         <p>
-          ${escapeHtml(childName)}'s personalised storybook has been created and is ready for you to download.
+          ${escapeHtml(childName)}'s personalised storybook has been created and is ready to read!
         </p>
+        ${coverImgHtml}
         <div style="text-align:center;margin:28px 0">
-          <a href="${pdfUrl}"
+          <a href="${viewerUrl}"
              style="background:#FF9F1C;color:#1E1B4B;font-weight:bold;padding:14px 28px;border-radius:999px;text-decoration:none;display:inline-block">
-            Download PDF
+            View Storybook →
           </a>
         </div>
-        <p style="text-align:center">
-          <a href="${viewerUrl}" style="color:#3730A3;font-size:14px">
-            Or view the storybook online →
+        <hr style="border:0;border-top:1px solid #F3E8FF;margin:28px 0" />
+        <p style="color:#888;font-size:12px;text-align:center">
+          TinguTales — personalised storybooks for your little one.<br/>
+          If you didn't request this, you can safely ignore this email.
+        </p>
+      </div>
+    `,
+  });
+}
+
+/**
+ * Notify the user that their storybook defect has been corrected and a new PDF is ready.
+ * @param {object} opts - The function options.
+ */
+export async function sendCorrectedStorybookEmail(opts: {
+  userEmail: string;
+  storyTitle: string;
+  childName: string;
+  pdfUrl: string;
+  storyId: string;
+  coverImageUrl?: string | null;
+}): Promise<void> {
+  if (!opts.userEmail) {
+    logger.warn("[emailService] sendCorrectedStorybookEmail called with empty userEmail — skipping");
+    return;
+  }
+
+  const {userEmail, storyTitle, childName, storyId, coverImageUrl} = opts;
+  const viewerUrl = `https://tingutales.com/story/${storyId}`;
+  const coverImgHtml = coverImageUrl ?
+    `<div style="text-align:center;margin:20px 0">
+        <img src="${coverImageUrl}" alt="Story cover" width="260"
+             style="border-radius:16px;box-shadow:0 4px 20px rgba(0,0,0,0.12);max-width:100%" />
+       </div>` :
+    "";
+
+  await send({
+    to: userEmail,
+    subject: "Your updated TinguTales storybook is ready! 📖",
+    html: `
+      <div style="font-family:sans-serif;max-width:600px;margin:0 auto;color:#1E1B4B">
+        <h2 style="color:#2A9D8F">✅ ${escapeHtml(storyTitle)} has been updated!</h2>
+        <p>Hi there,</p>
+        <p>
+          We have reviewed your storybook and corrected the defect you reported.
+          ${escapeHtml(childName)}'s updated storybook is now ready to download!
+        </p>
+        ${coverImgHtml}
+        <div style="text-align:center;margin:28px 0">
+          <a href="${viewerUrl}"
+             style="background:#2A9D8F;color:#fff;font-weight:bold;padding:14px 28px;border-radius:999px;text-decoration:none;display:inline-block">
+            View Updated Storybook →
           </a>
+        </div>
+        <p style="color:#555;font-size:13px">
+          We apologise for any inconvenience and hope you and ${escapeHtml(childName)} enjoy the story!
         </p>
         <hr style="border:0;border-top:1px solid #F3E8FF;margin:28px 0" />
         <p style="color:#888;font-size:12px;text-align:center">
@@ -156,9 +270,57 @@ export async function sendPdfReadyEmail(opts: {
   });
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Utility
-// ─────────────────────────────────────────────────────────────────────────────
+/**
+ * Notify the user that their refund has been processed.
+ * @param {object} opts - The function options.
+ */
+export async function sendRefundIssuedEmail(opts: {
+  userEmail: string;
+  storyTitle: string;
+  childName: string;
+  amountInr: number;
+  razorpayRefundId: string;
+}): Promise<void> {
+  if (!opts.userEmail) {
+    logger.warn("[emailService] sendRefundIssuedEmail called with empty userEmail — skipping");
+    return;
+  }
+
+  const {userEmail, storyTitle, childName, amountInr, razorpayRefundId} = opts;
+
+  await send({
+    to: userEmail,
+    subject: "Your TinguTales refund has been processed ✅",
+    html: `
+      <div style="font-family:sans-serif;max-width:600px;margin:0 auto;color:#1E1B4B">
+        <h2 style="color:#2A9D8F">✅ Refund Processed</h2>
+        <p>Hi there,</p>
+        <p>
+          We have processed your refund for <strong>${escapeHtml(storyTitle)}</strong>
+          (${escapeHtml(childName)}'s storybook).
+        </p>
+        <table style="border-collapse:collapse;width:100%;margin:16px 0">
+          <tr>
+            <td style="padding:8px 12px;border:1px solid #F3E8FF;color:#1E1B4B/60;font-size:13px">Amount</td>
+            <td style="padding:8px 12px;border:1px solid #F3E8FF;font-weight:bold">₹${amountInr.toFixed(2)}</td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border:1px solid #F3E8FF;color:#1E1B4B/60;font-size:13px">Refund ID</td>
+            <td style="padding:8px 12px;border:1px solid #F3E8FF;font-family:monospace;font-size:12px">${escapeHtml(razorpayRefundId)}</td>
+          </tr>
+        </table>
+        <p style="color:#555;font-size:13px">
+          The refund will appear in your bank account within 5–7 business days depending on your bank.
+          If you have any questions, please reply to this email.
+        </p>
+        <hr style="border:0;border-top:1px solid #F3E8FF;margin:28px 0" />
+        <p style="color:#888;font-size:12px;text-align:center">
+          TinguTales — personalised storybooks for your little one.
+        </p>
+      </div>
+    `,
+  });
+}
 
 /**
  * Escapes special HTML characters to prevent injection in email templates.

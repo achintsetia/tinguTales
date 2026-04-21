@@ -473,7 +473,20 @@ export default function LandingPage() {
             <img src="/logo-icon.svg" alt="" className="w-6 h-6" />
             <span style={{ fontFamily: "Fredoka" }}>Tingu <span className="text-[#FF9F1C]">Tales</span></span>
           </div>
-          <p>Made with love for little readers</p>
+          <div className="text-right">
+            <p>Made with love for little readers</p>
+            <p className="mt-0.5 text-xs">
+              by{" "}
+              <a
+                href="https://www.linkedin.com/in/achints/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-semibold text-[#1E1B4B]/70 hover:text-[#3730A3] transition-colors"
+              >
+                Achint Setia
+              </a>
+            </p>
+          </div>
         </div>
       </footer>
     </div>

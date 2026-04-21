@@ -31,7 +31,7 @@ export const adminRetryPdf = onCall<RetryPdfRequest>(
     });
 
     const queue = getFunctions().taskQueue("locations/asia-south1/functions/generateStorybookPdf");
-    await queue.enqueue({storyId, userId, totalPages}, {dispatchDeadlineSeconds: 600});
+    await queue.enqueue({storyId, userId, totalPages, skipEmail: true}, {dispatchDeadlineSeconds: 600});
 
     logger.info(`[adminRetryPdf] re-enqueued PDF for story ${storyId} by admin ${request.auth.uid}`);
     return {storyId, status: "queued"};
