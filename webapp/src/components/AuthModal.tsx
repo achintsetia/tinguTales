@@ -3,6 +3,7 @@ import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { X } from "lucide-react";
+import { Analytics } from "@/lib/analytics";
 
 const GoogleIcon = () => (
   <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24" aria-hidden="true">
@@ -79,6 +80,7 @@ export default function AuthModal({ open, onClose }: AuthModalProps) {
     setLoading(true);
     try {
       await login();
+      Analytics.login("google");
       handleClose();
     } catch (e) {
       const msg = getErrorMessage(e);
@@ -99,8 +101,10 @@ export default function AuthModal({ open, onClose }: AuthModalProps) {
     try {
       if (mode === "signin") {
         await loginWithEmail(email, password);
+        Analytics.login("email");
       } else {
         await signupWithEmail(email, password, name.trim());
+        Analytics.signUp("email");
       }
       handleClose();
     } catch (e) {

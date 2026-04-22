@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { Dialog, DialogContent } from "../components/ui/dialog";
 import BlurImage from "../components/BlurImage";
+import { Analytics } from "../lib/analytics";
 
 const MAGIC_MESSAGES = [
   "Gathering stardust...",
@@ -60,6 +61,7 @@ export default function StoryViewer() {
   const [submittingRefund, setSubmittingRefund] = useState(false);
   const [refundSubmitted, setRefundSubmitted] = useState(false); // real-time page images from subcollection
   const [showCloseHint, setShowCloseHint] = useState(false); // shown after 2 min of generating
+  const storyViewedRef = useRef(false);
 
   useEffect(() => {
     if (!storyId) return;
@@ -70,6 +72,10 @@ export default function StoryViewer() {
           const data = snap.data();
           setStory({ story_id: snap.id, ...data });
           if (data.quality_confirmed_at) setAllLooksGood(true);
+          if (data.status === "completed" && !storyViewedRef.current) {
+            storyViewedRef.current = true;
+            Analytics.storyViewed(snap.id);
+          }
         }
         setLoading(false);
       },
@@ -162,6 +168,7 @@ export default function StoryViewer() {
       } catch (e) {
         console.warn("Failed to record PDF download:", e);
       }
+      Analytics.pdfDownloaded(storyId!);
       window.open(story.pdf_url, "_blank");
     } else {
       toast.info("PDF is being prepared, please check back shortly.");

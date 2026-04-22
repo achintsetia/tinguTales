@@ -6,6 +6,7 @@ import AuthModal from "../components/AuthModal";
 import { Button } from "../components/ui/button";
 import { BookOpen, Sparkles, Globe, Palette, Download, Heart } from "lucide-react";
 import { db } from "../firebase";
+import { Analytics } from "../lib/analytics";
 
 const FEATURES = [
   {
@@ -155,6 +156,7 @@ export default function LandingPage() {
         status: "new",
         created_at: serverTimestamp(),
       });
+      Analytics.contactFormSubmitted();
       setContactSubmitted(true);
     } catch (err) {
       console.error("Failed to submit contact form", err);
@@ -192,7 +194,7 @@ export default function LandingPage() {
             </Button>
             <Button
               data-testid="btn-google-login-nav"
-              onClick={() => setShowAuth(true)}
+              onClick={() => { Analytics.getStartedClicked(); setShowAuth(true); }}
               className="rounded-full bg-[#FF9F1C] hover:bg-[#E88A12] text-[#1E1B4B] font-bold px-6 min-h-[44px]"
             >
               Get Started
@@ -229,7 +231,7 @@ export default function LandingPage() {
             <div className="flex flex-wrap gap-4 animate-fade-in-up stagger-4">
               <Button
                 data-testid="btn-google-login-hero"
-                onClick={() => setShowAuth(true)}
+                onClick={() => { Analytics.getStartedClicked(); setShowAuth(true); }}
                 className="rounded-full bg-[#FF9F1C] hover:bg-[#E88A12] text-[#1E1B4B] font-bold text-lg px-8 min-h-[56px] shadow-lg hover:shadow-xl transition-all"
               >
                 <Sparkles className="w-5 h-5 mr-2" strokeWidth={2.5} />
@@ -370,7 +372,7 @@ export default function LandingPage() {
             </p>
             <Button
               data-testid="btn-google-login-cta"
-              onClick={() => setShowAuth(true)}
+              onClick={() => { Analytics.getStartedClicked(); setShowAuth(true); }}
               className="rounded-full bg-[#FF9F1C] hover:bg-[#E88A12] text-[#1E1B4B] font-bold text-lg px-8 min-h-[56px]"
             >
               Start Creating Now

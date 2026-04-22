@@ -20,6 +20,7 @@ import { db, storage, functions } from "../firebase";
 import { collection, query, where, onSnapshot, deleteDoc, doc as firestoreDoc, updateDoc, getDoc, setDoc } from "firebase/firestore";
 import { ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
 import { httpsCallable } from "firebase/functions";
+import { Analytics } from "../lib/analytics";
 
 const LANGUAGES = [
   { code: "en", name: "English", native: "English", font: "" },
@@ -611,6 +612,7 @@ export default function CreateStory() {
       setNewProfile({ name: "", age: "", gender: "" });
       setPhotoFile(null);
       setPhotoPreview(null);
+      Analytics.profileCreated();
       toast.success("Profile created!");
     } catch (e) {
       toast.error("Failed to create profile");
@@ -756,6 +758,11 @@ export default function CreateStory() {
       setQaIssues(result.data.qaIssues ?? []);
       setDraftStatus("draft_ready");
       setDraftLoading(false);
+      Analytics.storyDraftGenerated({
+        pageCount,
+        language: selectedLang.name,
+        templateId: selectedTemplate ?? null,
+      });
       // Update URL to /create/:storyId so the session is bookmarkable/resumable
       navigate(`/create/${storyId}`, { replace: true });
       // Persist template & nativeChildName into the Firestore doc
@@ -780,6 +787,7 @@ export default function CreateStory() {
           {storyId: string; status: string}
         >(functions, "approveStoryDraft");
         await approveFn({storyId: draftStoryId, pagesText: editedPages});
+        Analytics.storyApproved(draftStoryId);
         clearWizardState();
         toast.success("Generating illustrations...");
         navigate(`/story/${draftStoryId}`);
@@ -806,6 +814,7 @@ export default function CreateStory() {
         return;
       }
       setCouponApplied({code: result.data.code || code, discountPercent});
+      Analytics.couponApplied(discountPercent);
       toast.success(`Coupon applied: ${discountPercent}% off`);
     } catch (e: any) {
       toast.error(e?.message || "Failed to apply coupon");
@@ -887,6 +896,7 @@ export default function CreateStory() {
             } catch {
               // Ignore network failure on dismissal.
             } finally {
+              Analytics.paymentDismissed();
               setCheckoutLoading(false);
             }
           },
@@ -899,6 +909,7 @@ export default function CreateStory() {
               razorpayPaymentId: response.razorpay_payment_id,
               razorpaySignature: response.razorpay_signature,
             });
+            Analytics.paymentCompleted(orderData.amount, orderData.currency || "INR", draftStoryId!);
             setShowApproveWarning(false);
             await handleApprove();
           } catch (e: any) {
@@ -919,6 +930,7 @@ export default function CreateStory() {
         } catch {
           // Ignore network failure after payment failure.
         } finally {
+          Analytics.paymentFailed(response?.error?.description || response?.error?.reason || "unknown");
           setCheckoutLoading(false);
         }
       });
@@ -927,6 +939,7 @@ export default function CreateStory() {
       // Close the dialog/backdrop before opening Razorpay so its overlay
       // doesn't intercept pointer and keyboard events on the checkout iframe.
       setShowApproveWarning(false);
+      Analytics.checkoutInitiated(orderData.amount, orderData.currency || "INR");
       await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
       razorpay.open();
     } catch (e: any) {
