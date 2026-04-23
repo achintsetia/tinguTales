@@ -30,6 +30,9 @@ export const createChildProfile = onCall(
     if (!name) {
       throw new HttpsError("invalid-argument", "name is required.");
     }
+    if (!photoStoragePath) {
+      throw new HttpsError("invalid-argument", "photo_storage_path is required.");
+    }
 
     const profileId = `profile_${uuidv4().replace(/-/g, "").slice(0, 12)}`;
 
@@ -44,7 +47,7 @@ export const createChildProfile = onCall(
       avatar_url: "",
       avatar_jpeg_url: "",
       // "pending" → trigger picks it up → "generating" → "completed" | "failed"
-      avatar_status: photoStoragePath ? "pending" : "none",
+      avatar_status: "pending",
       created_at: admin.firestore.FieldValue.serverTimestamp(),
     };
 

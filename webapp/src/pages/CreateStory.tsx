@@ -403,6 +403,7 @@ export default function CreateStory() {
   );
 
   const currentBookPrice = getBookPrice(pageCount);
+  const canCreateProfile = Boolean(newProfile.name.trim() && newProfile.age && photoFile);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -578,15 +579,19 @@ export default function CreateStory() {
       toast.error("This app is under beta testing. Contact support to get whitelisted.");
       return;
     }
-    if (!newProfile.name || !newProfile.age) {
+    if (!newProfile.name.trim() || !newProfile.age) {
       toast.error("Please enter name and age");
+      return;
+    }
+    if (!photoFile) {
+      toast.error("Please upload a photo to create the profile");
       return;
     }
     setSavingProfile(true);
     try {
       let photoStoragePath = "";
       let photoDownloadUrl = "";
-      if (photoFile && user?.id) {
+      if (user?.id) {
         const ext = photoFile.name.split(".").pop() ?? "jpg";
         const fileName = `${Date.now()}.${ext}`;
         const fileRef = storageRef(storage, `${user.id}/uploads/${fileName}`);
@@ -597,7 +602,7 @@ export default function CreateStory() {
 
       const createProfileFn = httpsCallable(functions, "createChildProfile");
       const result = await createProfileFn({
-        name: newProfile.name,
+        name: newProfile.name.trim(),
         age: parseInt(newProfile.age),
         gender: newProfile.gender,
         photo_storage_path: photoStoragePath,
@@ -1473,7 +1478,7 @@ export default function CreateStory() {
                     </div>
                   </div>
                   <div>
-                    <Label className="text-[#1E1B4B] font-medium mb-2 block">Photo (for avatar generation)</Label>
+                    <Label className="text-[#1E1B4B] font-medium mb-2 block">Photo (required for avatar generation)</Label>
                     {photoPreview ? (
                       <div className="flex items-center gap-4 p-3 rounded-2xl border-2 border-[#FF9F1C]/40 bg-[#FF9F1C]/5">
                         <img
@@ -1521,11 +1526,16 @@ export default function CreateStory() {
                         />
                       </label>
                     )}
+                    {!photoFile && (
+                      <p className="mt-2 text-xs text-[#E76F51]">
+                        A photo is required to create a child profile.
+                      </p>
+                    )}
                   </div>
                   <Button
                     data-testid="btn-save-profile"
                     onClick={handleCreateProfile}
-                    disabled={savingProfile}
+                    disabled={savingProfile || !canCreateProfile}
                     className="w-full rounded-full bg-[#FF9F1C] hover:bg-[#E88A12] text-[#1E1B4B] font-bold min-h-[48px]"
                   >
                     {savingProfile ? "Saving..." : "Save Profile"}
