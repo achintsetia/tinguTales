@@ -1136,6 +1136,18 @@ export default function CreateStory() {
                   ₹{Math.max(0, currentBookPrice - Math.round((currentBookPrice * (couponApplied?.discountPercent || 0)) / 100))}
                 </span>
               </div>
+              <div className="rounded-2xl border border-[#FDE7C0] bg-[#FFF7E8] p-3 text-sm text-[#1E1B4B]/80 leading-relaxed">
+                <p className="font-semibold text-[#1E1B4B]">A quick reassurance</p>
+                <p className="mt-2">
+                  We charge first because image generation is the expensive part of creating your book.
+                </p>
+                <p className="mt-2">
+                  After the images are generated, you can review every page and ask for a refund if you notice any image generation issues caused by AI mistakes.
+                </p>
+                <p className="mt-2">
+                  Our team will review your request, regenerate pages that have problems when needed, and help you get the right book for your child.
+                </p>
+              </div>
               <div className="flex items-center gap-2">
                 <Input
                   value={couponCode}
@@ -1174,7 +1186,7 @@ export default function CreateStory() {
               {checkoutLoading
                 ? "Starting checkout..."
                 : paymentsEnabled
-                ? "Proceed to Pay"
+                ? "Proceed to Payment"
                 : "Continue"}
             </Button>
           </div>
