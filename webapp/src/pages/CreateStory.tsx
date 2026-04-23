@@ -14,7 +14,7 @@ import {
   Plane, Train, Crown, Zap, ChefHat, Gamepad2, Cat, Trash2, Shuffle,
   Flame, Sun, Mountain, Feather, Tent, Lamp, BookHeart, Drama,
   AlertCircle, RotateCcw, Gift, Trophy, GraduationCap, PartyPopper,
-  CheckCircle2,
+  CheckCircle2, ShieldCheck,
 } from "lucide-react";
 import { db, storage, functions } from "../firebase";
 import { collection, query, where, onSnapshot, deleteDoc, doc as firestoreDoc, updateDoc, getDoc, setDoc } from "firebase/firestore";
@@ -228,6 +228,16 @@ const STEPS = [
 ];
 
 const FALLBACK_PRICING_TABLE: Record<number, number> = { 6: 79, 8: 99, 10: 129, 12: 149 };
+const AVATAR_CONFETTI = [
+  { left: "7%", top: "10%", color: "#FF9F1C", delay: "0s", duration: "2s", rotate: "-16deg", width: "10px", height: "18px" },
+  { left: "18%", top: "4%", color: "#E76F51", delay: "0.2s", duration: "1.8s", rotate: "14deg", width: "8px", height: "14px" },
+  { left: "30%", top: "14%", color: "#2A9D8F", delay: "0.45s", duration: "2.2s", rotate: "-12deg", width: "9px", height: "16px" },
+  { left: "76%", top: "8%", color: "#3730A3", delay: "0.15s", duration: "2.1s", rotate: "18deg", width: "8px", height: "14px" },
+  { left: "88%", top: "12%", color: "#FF9F1C", delay: "0.55s", duration: "1.9s", rotate: "-18deg", width: "10px", height: "18px" },
+  { left: "82%", top: "30%", color: "#E76F51", delay: "0.35s", duration: "2.3s", rotate: "10deg", width: "7px", height: "12px" },
+  { left: "12%", top: "34%", color: "#2A9D8F", delay: "0.6s", duration: "2.15s", rotate: "-10deg", width: "7px", height: "12px" },
+  { left: "50%", top: "2%", color: "#FFD166", delay: "0.25s", duration: "1.95s", rotate: "0deg", width: "9px", height: "9px" },
+] as const;
 
 type RedeemCouponResponse = {
   code: string;
@@ -301,7 +311,7 @@ export default function CreateStory() {
   const [razorpayLoaded, setRazorpayLoaded] = useState(false);
   const [pricingByPages, setPricingByPages] = useState<Record<number, number>>(FALLBACK_PRICING_TABLE);
   const [deleteUploadPrompt, setDeleteUploadPrompt] = useState<{
-    profileId: string; photoPath: string; profileName: string;
+    profileId: string; photoPath: string; profileName: string; avatarUrl: string;
   } | null>(null);
   const [deletingUpload, setDeletingUpload] = useState(false);
   const [isWhitelisted, setIsWhitelisted] = useState<boolean | null>(null);
@@ -336,6 +346,7 @@ export default function CreateStory() {
             profileId: p.profile_id,
             photoPath: p.photo_url,
             profileName: p.name,
+            avatarUrl: p.avatar_jpeg_url || p.avatar_url || "",
           });
         }
         prevStatusesRef.current[p.profile_id] = p.avatar_status;
@@ -404,6 +415,18 @@ export default function CreateStory() {
 
   const currentBookPrice = getBookPrice(pageCount);
   const canCreateProfile = Boolean(newProfile.name.trim() && newProfile.age && photoFile);
+  const deletePromptProfile = deleteUploadPrompt
+    ? profiles.find((p) => p.profile_id === deleteUploadPrompt.profileId)
+    : null;
+  const deletePromptAvatarUrl =
+    deletePromptProfile?.avatar_jpeg_url ||
+    deletePromptProfile?.avatar_url ||
+    deleteUploadPrompt?.avatarUrl ||
+    "";
+  const deletePromptProfileName =
+    deletePromptProfile?.name ||
+    deleteUploadPrompt?.profileName ||
+    "Your child";
 
   useEffect(() => {
     if (!user?.id) return;
@@ -680,7 +703,7 @@ export default function CreateStory() {
         photo_url: "",
         photo_download_url: "",
       });
-      toast.success("Original photo deleted to save storage space.");
+      toast.success("Original photo deleted to help protect your child's privacy.");
     } catch {
       toast.error("Could not delete the original photo.");
     } finally {
@@ -1078,33 +1101,99 @@ export default function CreateStory() {
         </div>
       )}
       {/* Delete-upload confirmation dialog */}
-      <Dialog open={!!deleteUploadPrompt} onOpenChange={(open) => { if (!open) setDeleteUploadPrompt(null); }}>
-        <DialogContent className="rounded-3xl border-2 border-[#F3E8FF] max-w-sm">
-          <DialogHeader>
-            <DialogTitle style={{ fontFamily: "Fredoka" }} className="text-[#1E1B4B] text-xl">
-              Avatar ready! 🎉
-            </DialogTitle>
-          </DialogHeader>
-          <DialogDescription className="text-sm text-[#1E1B4B]/70 mt-1">
-            {deleteUploadPrompt?.profileName}'s cartoon avatar has been created.
-            Would you like to delete the original uploaded photo to save storage space?
-          </DialogDescription>
-          <div className="flex gap-3 mt-4">
-            <Button
-              variant="outline"
-              className="flex-1 rounded-full border-[#F3E8FF]"
-              onClick={() => handleConfirmDeleteUpload(false)}
-            >
-              Keep Photo
-            </Button>
-            <Button
-              className="flex-1 rounded-full bg-[#E76F51] hover:bg-[#E76F51]/80 text-white"
-              disabled={deletingUpload}
-              onClick={() => handleConfirmDeleteUpload(true)}
-            >
-              <Trash2 className="w-4 h-4 mr-1.5" strokeWidth={2} />
-              {deletingUpload ? "Deleting..." : "Delete Upload"}
-            </Button>
+      <Dialog open={!!deleteUploadPrompt} onOpenChange={(open) => { if (!open && !deletingUpload) setDeleteUploadPrompt(null); }}>
+        <DialogContent className="rounded-[32px] border-2 border-[#F3E8FF] max-w-lg p-0 overflow-hidden">
+          <div className="relative overflow-hidden bg-[radial-gradient(circle_at_top,_rgba(255,159,28,0.22),_rgba(255,255,255,0)_55%),linear-gradient(180deg,_#FFF7E8_0%,_#FDFBF7_100%)] px-6 pt-8 pb-6">
+            <div className="pointer-events-none absolute inset-0 overflow-hidden">
+              {AVATAR_CONFETTI.map((piece, idx) => (
+                <span
+                  key={idx}
+                  className="absolute"
+                  style={{ left: piece.left, top: piece.top, transform: `rotate(${piece.rotate})` }}
+                >
+                  <span
+                    className="block rounded-[3px] opacity-90"
+                    style={{
+                      width: piece.width,
+                      height: piece.height,
+                      backgroundColor: piece.color,
+                      animation: `confettiDrop ${piece.duration} ease-in-out ${piece.delay} infinite`,
+                    }}
+                  />
+                </span>
+              ))}
+            </div>
+
+            <DialogHeader className="relative items-center text-center">
+              <div className="inline-flex items-center gap-2 rounded-full border border-[#2A9D8F]/15 bg-[#2A9D8F]/10 px-3 py-1 text-xs font-semibold text-[#2A9D8F]">
+                <CheckCircle2 className="w-3.5 h-3.5" strokeWidth={2.5} />
+                Avatar created
+              </div>
+              <div className="relative mt-5">
+                <div className="absolute inset-[-18px] rounded-full bg-[#FF9F1C]/20 blur-2xl" />
+                <div className="relative w-full max-w-[320px] overflow-hidden rounded-[32px] border-4 border-white bg-white shadow-[0_18px_50px_rgba(55,48,163,0.16)]">
+                  {deletePromptAvatarUrl ? (
+                    <div className="aspect-[4/5] w-full bg-[radial-gradient(circle_at_top,_rgba(255,159,28,0.12),_rgba(255,255,255,0)_58%),linear-gradient(180deg,_#FFFDF8_0%,_#F4F1FF_100%)] p-4 sm:p-5">
+                      <img
+                        src={deletePromptAvatarUrl}
+                        alt={`${deletePromptProfileName}'s avatar`}
+                        className="h-full w-full object-contain"
+                        loading="eager"
+                      />
+                    </div>
+                  ) : (
+                    <div className="flex aspect-[4/5] w-full items-center justify-center bg-gradient-to-br from-[#F3E8FF] via-[#FFF7E8] to-[#E0F2F1]">
+                      <User className="w-16 h-16 text-[#3730A3]/45" strokeWidth={1.8} />
+                    </div>
+                  )}
+                </div>
+              </div>
+              <DialogTitle style={{ fontFamily: "Fredoka" }} className="mt-5 text-[#1E1B4B] text-2xl">
+                Avatar ready! 🎉
+              </DialogTitle>
+              <DialogDescription className="mx-auto mt-2 max-w-md text-sm leading-relaxed text-[#1E1B4B]/70">
+                {deletePromptProfileName}'s avatar is ready. You can now safely delete the original photo without affecting the avatar.
+              </DialogDescription>
+              <p className="mt-2 text-xs font-medium text-[#3730A3]/70">
+                This preview shows how your child will appear in the book.
+              </p>
+            </DialogHeader>
+          </div>
+
+          <div className="px-6 pb-6 pt-5 space-y-4">
+            <div className="rounded-3xl border border-[#2A9D8F]/20 bg-[#2A9D8F]/8 p-4">
+              <div className="flex items-start gap-3">
+                <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-white shadow-sm">
+                  <ShieldCheck className="w-5 h-5 text-[#2A9D8F]" strokeWidth={2} />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-[#1E1B4B]">
+                    Your child's privacy is important to us
+                  </p>
+                  <p className="mt-1 text-sm leading-relaxed text-[#1E1B4B]/70">
+                    We recommend deleting the original photo now that the avatar is ready. Deleting the uploaded photo will not remove the avatar from your child's profile.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex gap-3">
+              <Button
+                variant="outline"
+                className="flex-1 rounded-full border-[#F3E8FF]"
+                onClick={() => handleConfirmDeleteUpload(false)}
+              >
+                Keep Photo
+              </Button>
+              <Button
+                className="flex-1 rounded-full bg-[#E76F51] hover:bg-[#E76F51]/80 text-white"
+                disabled={deletingUpload}
+                onClick={() => handleConfirmDeleteUpload(true)}
+              >
+                <Trash2 className="w-4 h-4 mr-1.5" strokeWidth={2} />
+                {deletingUpload ? "Deleting..." : "Delete Photo"}
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>
