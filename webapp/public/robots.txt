@@ -1,0 +1,12 @@
+User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /admin/
+Disallow: /create
+Disallow: /create/
+Disallow: /dashboard
+Disallow: /dashboard/
+Disallow: /payments
+Disallow: /story/
+
+Sitemap: https://tingutales.com/sitemap.xml

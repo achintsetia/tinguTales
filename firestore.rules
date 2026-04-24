@@ -103,6 +103,12 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // Sample story PDFs — public read for sample stories page, admin write only
+    match /sample_stories/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
     // Contact form submissions — public create, admin read/manage
     match /contacts/{docId} {
       allow create: if true;

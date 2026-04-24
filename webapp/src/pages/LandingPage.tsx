@@ -1,10 +1,12 @@
 import { useAuth } from "../context/AuthContext";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { addDoc, collection, getDocs, serverTimestamp } from "firebase/firestore";
 import AuthModal from "../components/AuthModal";
+import Seo from "../components/Seo";
 import { Button } from "../components/ui/button";
 import { BookOpen, Sparkles, Globe, Palette, Download, Heart } from "lucide-react";
+import { HOMEPAGE_FAQS } from "../content/faqs";
 import { db } from "../firebase";
 import { Analytics } from "../lib/analytics";
 
@@ -45,34 +47,6 @@ const LANGUAGES_PREVIEW = [
   { code: "bn", native: "\u09ac\u09be\u0982\u09b2\u09be", name: "Bengali" },
   { code: "gu", native: "\u0a97\u0ac1\u0a9c\u0ab0\u0abe\u0aa4\u0ac0", name: "Gujarati" },
   { code: "ml", native: "\u0d2e\u0d32\u0d2f\u0d3e\u0d33\u0d02", name: "Malayalam" },
-];
-
-const FAQS = [
-  {
-    question: "What is Tingu Tales?",
-    answer:
-      "Tingu Tales is an AI storybook creator that turns your child into the hero of personalized, illustrated stories.",
-  },
-  {
-    question: "Which languages are available?",
-    answer:
-      "You can create stories in 9 languages: English, Hindi, Kannada, Tamil, Telugu, Marathi, Bengali, Gujarati, and Malayalam.",
-  },
-  {
-    question: "Can I download and print the storybook?",
-    answer:
-      "Yes. Every storybook can be downloaded as a PDF so you can print it, gift it, or share it with family.",
-  },
-  {
-    question: "Is Tingu Tales suitable for young children?",
-    answer:
-      "Yes. The stories are designed to be warm, age-appropriate, and easy for children to enjoy with parents.",
-  },
-  {
-    question: "How does Tingu Tales protect child privacy?",
-    answer:
-      "We take child privacy seriously. The uploaded child photo is deleted immediately after avatar creation, and we do not share your data with anyone.",
-  },
 ];
 
 const YOUTUBE_URL = "https://www.youtube.com/@TinguTalesOfficial";
@@ -188,19 +162,41 @@ export default function LandingPage() {
 
   return (
     <div className="min-h-screen bg-[#FDFBF7]">
+      <Seo
+        title="Tingu Tales - Personalized AI Storybooks for Kids in 9 Indian Languages"
+        description="Create personalized AI storybooks where your child is the hero. Generate illustrated kids stories in English, Hindi, Kannada, Tamil, Telugu, Marathi, Bengali, Gujarati, and Malayalam."
+        canonicalUrl="https://tingutales.com/"
+      />
       {/* Navbar */}
       <nav className="fixed top-0 left-0 right-0 z-50 backdrop-blur-xl bg-[#FDFBF7]/80 border-b border-[#F3E8FF]">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <img src="/favicon.png" alt="Tingu Tales" className="w-10 h-10" />
             <span
-              className="text-2xl font-semibold tracking-tight text-[#1E1B4B]"
+              className="hidden sm:inline text-2xl font-semibold tracking-tight text-[#1E1B4B]"
               style={{ fontFamily: "Fredoka" }}
             >
               Tingu <span className="text-[#FF9F1C]">Tales</span>
             </span>
           </div>
           <div className="flex items-center gap-2 sm:gap-3">
+            <Button
+              asChild
+              variant="outline"
+              className="rounded-full border-[#1E1B4B]/15 px-3 min-h-[44px] font-semibold text-[#1E1B4B] hover:bg-[#1E1B4B]/5 sm:px-5"
+            >
+              <Link to="/sample-stories">
+                <span className="sm:hidden">Samples</span>
+                <span className="hidden sm:inline">Sample Stories</span>
+              </Link>
+            </Button>
+            <Button
+              asChild
+              variant="ghost"
+              className="hidden rounded-full px-4 font-semibold text-[#1E1B4B] hover:bg-[#1E1B4B]/5 md:inline-flex"
+            >
+              <Link to="/faq">FAQ</Link>
+            </Button>
             <Button
               type="button"
               onClick={() => {
@@ -215,7 +211,7 @@ export default function LandingPage() {
             <Button
               data-testid="btn-google-login-nav"
               onClick={() => { Analytics.getStartedClicked(); setShowAuth(true); }}
-              className="rounded-full bg-[#FF9F1C] hover:bg-[#E88A12] text-[#1E1B4B] font-bold px-6 min-h-[44px]"
+              className="rounded-full bg-[#FF9F1C] hover:bg-[#E88A12] text-[#1E1B4B] font-bold px-4 sm:px-6 min-h-[44px]"
             >
               Get Started
             </Button>
@@ -335,12 +331,17 @@ export default function LandingPage() {
           </h2>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {FAQS.map((faq) => (
+          {HOMEPAGE_FAQS.map((faq) => (
             <article key={faq.question} className="bg-white border-2 border-[#F3E8FF] rounded-2xl p-6">
               <h3 className="text-lg font-semibold text-[#1E1B4B] mb-2">{faq.question}</h3>
               <p className="text-[#1E1B4B]/75 leading-relaxed">{faq.answer}</p>
             </article>
           ))}
+        </div>
+        <div className="mt-10 text-center">
+          <Button asChild variant="outline" className="rounded-full border-[#1E1B4B]/15 px-6 font-semibold text-[#1E1B4B] hover:bg-[#1E1B4B]/5">
+            <Link to="/faq">View all FAQs</Link>
+          </Button>
         </div>
       </section>
 

@@ -4,96 +4,169 @@
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <meta name="theme-color" content="#3730A3" />
-        <meta name="description" content="Tingu Tales creates personalized AI storybooks where your child is the hero, with beautiful illustrations in 9 Indian languages." />
-        <meta name="keywords" content="personalized storybook for kids, AI storybook, children's story generator, bedtime stories, Indian language storybooks, bilingual stories, printable kids storybook" />
+        <meta name="application-name" content="Tingu Tales" />
+        <meta name="apple-mobile-web-app-title" content="Tingu Tales" />
+        <meta name="description" content="Create personalized AI storybooks where your child is the hero. Generate illustrated kids stories in 9 Indian languages and download printable PDFs." />
         <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
         <meta name="author" content="Tingu Tales" />
         <link rel="canonical" href="https://tingutales.com/" />
 
         <meta property="og:type" content="website" />
+        <meta property="og:locale" content="en_IN" />
         <meta property="og:site_name" content="Tingu Tales" />
-        <meta property="og:title" content="Tingu Tales | Personalized AI Storybooks for Kids" />
-        <meta property="og:description" content="Create magical personalized storybooks featuring your child in 9 Indian languages. Download as PDF and share with family." />
+        <meta property="og:title" content="Tingu Tales - Personalized AI Storybooks for Kids" />
+        <meta property="og:description" content="Create illustrated AI storybooks where your child is the hero in English, Hindi, Kannada, Tamil, Telugu, Marathi, Bengali, Gujarati, and Malayalam." />
         <meta property="og:url" content="https://tingutales.com/" />
-        <meta property="og:image" content="https://tingutales.com/tingu-youtube-logo.jpg" />
+        <meta property="og:image" content="https://tingutales.com/og-image.png" />
+        <meta property="og:image:secure_url" content="https://tingutales.com/og-image.png" />
+        <meta property="og:image:width" content="1200" />
+        <meta property="og:image:height" content="630" />
+        <meta property="og:image:alt" content="Tingu Tales personalized AI storybooks for kids" />
 
         <meta name="twitter:card" content="summary_large_image" />
-        <meta name="twitter:title" content="Tingu Tales | Personalized AI Storybooks for Kids" />
-        <meta name="twitter:description" content="Create illustrated AI storybooks where your child is the hero in 9 Indian languages." />
-        <meta name="twitter:image" content="https://tingutales.com/tingu-youtube-logo.jpg" />
+        <meta name="twitter:title" content="Tingu Tales - Personalized AI Storybooks for Kids" />
+        <meta name="twitter:description" content="Create personalized, illustrated AI storybooks for kids in 9 Indian languages." />
+        <meta name="twitter:image" content="https://tingutales.com/og-image.png" />
+        <meta name="twitter:image:alt" content="Tingu Tales personalized AI storybooks for kids" />
 
         <link rel="icon" type="image/png" href="/favicon.png" />
-        <link rel="apple-touch-icon" href="/tingu-youtube-logo-icon.png" />
+        <link rel="apple-touch-icon" href="/favicon.png" />
+        <link rel="preload" as="image" href="/landing-hero.png" />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@600&display=swap" rel="stylesheet" />
-        <!--
-        manifest.json provides metadata used when your web app is installed on a
-        user's mobile device or desktop. See https://developers.google.com/web/fundamentals/web-app-manifest/
-        -->
-        <!--
-        Notice the use of %PUBLIC_URL% in the tags above.
-        It will be replaced with the URL of the `public` folder during the build.
-        Only files inside the `public` folder can be referenced from the HTML.
-
-        Unlike "/favicon.ico" or "favicon.ico", "%PUBLIC_URL%/favicon.ico" will
-        work correctly both with client-side routing and a non-root public URL.
-        Learn how to configure a non-root public URL by running `npm run build`.
-        -->
-        <title>Tingu Tales | Personalized AI Storybooks for Kids</title>
+        <title>Tingu Tales - Personalized AI Storybooks for Kids in 9 Indian Languages</title>
         <script>window.addEventListener("error",function(e){if(e.error instanceof DOMException&&e.error.name==="DataCloneError"&&e.message&&e.message.includes("PerformanceServerTiming")){e.stopImmediatePropagation();e.preventDefault()}},true);</script>
         <script type="application/ld+json">
             {
                 "@context": "https://schema.org",
-                "@type": "WebSite",
-                "name": "Tingu Tales",
-                "url": "https://tingutales.com/",
-                "description": "Personalized AI storybooks for children in 9 Indian languages.",
-                "inLanguage": ["en", "hi", "kn", "ta", "te", "mr", "bn", "gu", "ml"],
-                "publisher": {
-                    "@type": "Organization",
-                    "name": "Tingu Tales",
-                    "url": "https://tingutales.com/",
-                    "logo": "https://tingutales.com/tingu-youtube-logo-icon.png"
-                }
-            }
-        </script>
-        <script type="application/ld+json">
-            {
-                "@context": "https://schema.org",
-                "@type": "FAQPage",
-                "mainEntity": [
+                "@graph": [
                     {
-                        "@type": "Question",
-                        "name": "What is Tingu Tales?",
-                        "acceptedAnswer": {
-                            "@type": "Answer",
-                            "text": "Tingu Tales creates personalized, illustrated AI storybooks where your child is the hero."
+                        "@type": "Organization",
+                        "@id": "https://tingutales.com/#organization",
+                        "name": "Tingu Tales",
+                        "url": "https://tingutales.com/",
+                        "logo": {
+                            "@type": "ImageObject",
+                            "url": "https://tingutales.com/favicon.png",
+                            "width": 96,
+                            "height": 96
+                        },
+                        "image": "https://tingutales.com/og-image.png",
+                        "sameAs": [
+                            "https://www.youtube.com/@TinguTalesOfficial",
+                            "https://www.linkedin.com/in/achints/"
+                        ]
+                    },
+                    {
+                        "@type": "WebSite",
+                        "@id": "https://tingutales.com/#website",
+                        "url": "https://tingutales.com/",
+                        "name": "Tingu Tales",
+                        "description": "Personalized AI storybooks for children in 9 Indian languages.",
+                        "publisher": {
+                            "@id": "https://tingutales.com/#organization"
+                        },
+                        "inLanguage": ["en", "hi", "kn", "ta", "te", "mr", "bn", "gu", "ml"]
+                    },
+                    {
+                        "@type": "WebPage",
+                        "@id": "https://tingutales.com/#webpage",
+                        "url": "https://tingutales.com/",
+                        "name": "Tingu Tales - Personalized AI Storybooks for Kids in 9 Indian Languages",
+                        "description": "Create personalized AI storybooks where your child is the hero. Generate illustrated kids stories in 9 Indian languages and download printable PDFs.",
+                        "isPartOf": {
+                            "@id": "https://tingutales.com/#website"
+                        },
+                        "about": {
+                            "@id": "https://tingutales.com/#organization"
+                        },
+                        "primaryImageOfPage": {
+                            "@id": "https://tingutales.com/#primaryimage"
+                        },
+                        "inLanguage": "en"
+                    },
+                    {
+                        "@type": "ImageObject",
+                        "@id": "https://tingutales.com/#primaryimage",
+                        "url": "https://tingutales.com/og-image.png",
+                        "width": 1200,
+                        "height": 630,
+                        "caption": "Tingu Tales personalized AI storybooks for kids"
+                    },
+                    {
+                        "@type": "Service",
+                        "@id": "https://tingutales.com/#storybook-service",
+                        "name": "Personalized AI storybook creation",
+                        "serviceType": "AI storybook generator for children",
+                        "provider": {
+                            "@id": "https://tingutales.com/#organization"
+                        },
+                        "areaServed": {
+                            "@type": "Country",
+                            "name": "India"
+                        },
+                        "availableLanguage": ["English", "Hindi", "Kannada", "Tamil", "Telugu", "Marathi", "Bengali", "Gujarati", "Malayalam"],
+                        "audience": {
+                            "@type": "Audience",
+                            "audienceType": "Parents of young children"
                         }
                     },
                     {
-                        "@type": "Question",
-                        "name": "Which languages are available?",
-                        "acceptedAnswer": {
-                            "@type": "Answer",
-                            "text": "Stories are available in English, Hindi, Kannada, Tamil, Telugu, Marathi, Bengali, Gujarati, and Malayalam."
-                        }
-                    },
-                    {
-                        "@type": "Question",
-                        "name": "Can I download and print my storybook?",
-                        "acceptedAnswer": {
-                            "@type": "Answer",
-                            "text": "Yes, you can download each storybook as a PDF and print or share it."
-                        }
-                    },
-                    {
-                        "@type": "Question",
-                        "name": "How does Tingu Tales protect child privacy?",
-                        "acceptedAnswer": {
-                            "@type": "Answer",
-                            "text": "We take child privacy seriously. The uploaded child photo is deleted immediately after avatar creation, and we do not share your data with anyone."
-                        }
+                        "@type": "FAQPage",
+                        "@id": "https://tingutales.com/#faq",
+                        "isPartOf": {
+                            "@id": "https://tingutales.com/#webpage"
+                        },
+                        "mainEntity": [
+                            {
+                                "@type": "Question",
+                                "name": "What is Tingu Tales?",
+                                "acceptedAnswer": {
+                                    "@type": "Answer",
+                                    "text": "Tingu Tales is an AI storybook creator that turns your child into the hero of personalized, illustrated stories."
+                                }
+                            },
+                            {
+                                "@type": "Question",
+                                "name": "Which languages are available?",
+                                "acceptedAnswer": {
+                                    "@type": "Answer",
+                                    "text": "You can create stories in 9 languages: English, Hindi, Kannada, Tamil, Telugu, Marathi, Bengali, Gujarati, and Malayalam."
+                                }
+                            },
+                            {
+                                "@type": "Question",
+                                "name": "Can I download and print the storybook?",
+                                "acceptedAnswer": {
+                                    "@type": "Answer",
+                                    "text": "Yes. Every storybook can be downloaded as a PDF so you can print it, gift it, or share it with family."
+                                }
+                            },
+                            {
+                                "@type": "Question",
+                                "name": "Is the story content matched to my child's age?",
+                                "acceptedAnswer": {
+                                    "@type": "Answer",
+                                    "text": "Yes. Tingu Tales adjusts the story's vocabulary, sentence length, and tone based on your child's age. For example, a story for a 3-year-old uses simpler words, shorter sentences, and gentle concepts that are easier for them to follow."
+                                }
+                            },
+                            {
+                                "@type": "Question",
+                                "name": "How does the refund process work?",
+                                "acceptedAnswer": {
+                                    "@type": "Answer",
+                                    "text": "After the images are generated, you can review every page. If you notice AI image defects, submit a refund request from the review screen. Our team will review it and may correct or regenerate defective pages, resend an updated storybook link, or process an eligible refund."
+                                }
+                            },
+                            {
+                                "@type": "Question",
+                                "name": "How does Tingu Tales protect child privacy?",
+                                "acceptedAnswer": {
+                                    "@type": "Answer",
+                                    "text": "We take child privacy seriously. The uploaded child photo is deleted immediately after avatar creation, and we do not share your data with anyone."
+                                }
+                            }
+                        ]
                     }
                 ]
             }

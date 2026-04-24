@@ -135,7 +135,7 @@ export default function AuthModal({ open, onClose }: AuthModalProps) {
 
         {/* Logo */}
         <div className="flex items-center gap-2 mb-6">
-          <img src="/tingu-youtube-logo-icon.png" alt="" className="w-8 h-8" />
+          <img src="/favicon.png" alt="" className="w-8 h-8" />
           <span
             className="text-xl font-semibold text-[#1E1B4B]"
             style={{ fontFamily: "Fredoka" }}
