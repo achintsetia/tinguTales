@@ -75,6 +75,26 @@ const FAQS = [
   },
 ];
 
+const YOUTUBE_URL = "https://www.youtube.com/@TinguTalesOfficial";
+
+function YouTubeLogo() {
+  return (
+    <svg
+      aria-hidden="true"
+      className="h-6 w-6 shrink-0"
+      viewBox="0 0 28 20"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        d="M27.42 3.12A3.49 3.49 0 0 0 24.96.66C22.78.08 14 .08 14 .08S5.22.08 3.04.66A3.49 3.49 0 0 0 .58 3.12C0 5.3 0 9.85 0 9.85s0 4.55.58 6.73a3.49 3.49 0 0 0 2.46 2.46c2.18.58 10.96.58 10.96.58s8.78 0 10.96-.58a3.49 3.49 0 0 0 2.46-2.46c.58-2.18.58-6.73.58-6.73s0-4.55-.58-6.73Z"
+        fill="#FF0000"
+      />
+      <path d="m11.2 14.05 7.28-4.2-7.28-4.2v8.4Z" fill="white" />
+    </svg>
+  );
+}
+
 export default function LandingPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -172,7 +192,7 @@ export default function LandingPage() {
       <nav className="fixed top-0 left-0 right-0 z-50 backdrop-blur-xl bg-[#FDFBF7]/80 border-b border-[#F3E8FF]">
         <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <img src="/logo-icon.svg" alt="Tingu Tales" className="w-10 h-10" />
+            <img src="/favicon.png" alt="Tingu Tales" className="w-10 h-10" />
             <span
               className="text-2xl font-semibold tracking-tight text-[#1E1B4B]"
               style={{ fontFamily: "Fredoka" }}
@@ -237,6 +257,16 @@ export default function LandingPage() {
                 <Sparkles className="w-5 h-5 mr-2" strokeWidth={2.5} />
                 Create Your First Story
               </Button>
+              <a
+                href={YOUTUBE_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="Visit Tingu Tales on YouTube"
+                className="inline-flex min-h-[56px] items-center gap-2 rounded-full border border-white/25 bg-white/15 px-6 text-lg font-bold text-white backdrop-blur-sm transition-all hover:bg-white/25 hover:shadow-xl"
+              >
+                <YouTubeLogo />
+                <span>Watch on YouTube</span>
+              </a>
             </div>
 
             {/* Language pills */}
@@ -472,7 +502,7 @@ export default function LandingPage() {
       <footer className="border-t border-[#F3E8FF] py-8">
         <div className="max-w-7xl mx-auto px-6 flex items-center justify-between text-sm text-[#1E1B4B]/50">
           <div className="flex items-center gap-2">
-            <img src="/logo-icon.svg" alt="" className="w-6 h-6" />
+            <img src="/favicon.png" alt="" className="w-6 h-6" />
             <span style={{ fontFamily: "Fredoka" }}>Tingu <span className="text-[#FF9F1C]">Tales</span></span>
           </div>
           <div className="text-right">

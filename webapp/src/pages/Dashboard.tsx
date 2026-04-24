@@ -279,7 +279,7 @@ export default function Dashboard() {
       <nav className="sticky top-0 z-50 backdrop-blur-xl bg-[#FDFBF7]/80 border-b border-[#F3E8FF]">
         <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3 cursor-pointer" onClick={() => navigate("/dashboard")}>
-            <img src="/logo-icon.svg" alt="Tingu Tales" className="w-9 h-9" />
+            <img src="/favicon.png" alt="Tingu Tales" className="w-9 h-9" />
             <span className="text-2xl font-semibold tracking-tight text-[#1E1B4B]" style={{ fontFamily: "Fredoka" }}>
               Tingu <span className="text-[#FF9F1C]">Tales</span>
             </span>
