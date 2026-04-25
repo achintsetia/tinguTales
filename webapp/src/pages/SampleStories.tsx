@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { collection, getDocs } from "firebase/firestore";
-import { ArrowLeft, BookOpen, ExternalLink, FileText, Sparkles } from "lucide-react";
+import { ArrowLeft, BookOpen, FileText, Sparkles } from "lucide-react";
 import Seo from "../components/Seo";
 import { Button } from "../components/ui/button";
 import { db } from "../firebase";
@@ -26,8 +26,14 @@ const SAMPLE_STORIES_JSON_LD = {
   },
 };
 
+function getPdfEmbedUrl(pdfLink: string) {
+  const separator = pdfLink.includes("#") ? "&" : "#";
+  return `${pdfLink}${separator}toolbar=0&navpanes=0&download=0&print=0&view=FitH`;
+}
+
 export default function SampleStories() {
   const [stories, setStories] = useState<SampleStory[]>([]);
+  const [selectedStoryId, setSelectedStoryId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
 
@@ -61,6 +67,17 @@ export default function SampleStories() {
 
     void loadSampleStories();
   }, []);
+
+  useEffect(() => {
+    if (
+      stories.length > 0 &&
+      (!selectedStoryId || !stories.some((story) => story.id === selectedStoryId))
+    ) {
+      setSelectedStoryId(stories[0].id);
+    }
+  }, [selectedStoryId, stories]);
+
+  const selectedStory = stories.find((story) => story.id === selectedStoryId) ?? stories[0];
 
   return (
     <div className="min-h-screen bg-[#FDFBF7]">
@@ -134,37 +151,75 @@ export default function SampleStories() {
                 We are preparing sample storybooks for you to read.
               </p>
             </div>
-          ) : (
-            <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
-              {stories.map((story, index) => (
-                <article
-                  key={story.id}
-                  className="flex min-h-64 flex-col justify-between rounded-3xl border-2 border-[#F3E8FF] bg-white p-6 shadow-sm transition-transform hover:-translate-y-1 hover:shadow-lg"
-                >
+          ) : selectedStory ? (
+            <div className="grid grid-cols-1 gap-8 lg:grid-cols-[320px_minmax(0,1fr)]">
+              <div className="space-y-3">
+                {stories.map((story, index) => {
+                  const isSelected = story.id === selectedStory.id;
+
+                  return (
+                    <button
+                      key={story.id}
+                      type="button"
+                      onClick={() => setSelectedStoryId(story.id)}
+                      className={`w-full rounded-2xl border-2 p-4 text-left transition-all ${
+                        isSelected
+                          ? "border-[#FF9F1C] bg-[#FFF7E8] shadow-sm"
+                          : "border-[#F3E8FF] bg-white hover:border-[#FF9F1C]/55 hover:bg-[#FFF7E8]/55"
+                      }`}
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#FF9F1C]/15">
+                          <FileText className="h-5 w-5 text-[#FF9F1C]" strokeWidth={2.5} />
+                        </div>
+                        <div>
+                          <p className="mb-1 text-xs font-bold uppercase tracking-[0.16em] text-[#2A9D8F]">
+                            Story {index + 1}
+                          </p>
+                          <h2 className="text-lg font-semibold text-[#1E1B4B]" style={{ fontFamily: "Fredoka" }}>
+                            {story.title}
+                          </h2>
+                          <p className="mt-1 text-sm text-[#1E1B4B]/60">
+                            {isSelected ? "Currently previewing" : "Preview on this page"}
+                          </p>
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <article className="overflow-hidden rounded-3xl border-2 border-[#F3E8FF] bg-white shadow-sm">
+                <div className="flex flex-col gap-2 border-b border-[#F3E8FF] bg-[#FDFBF7] px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
                   <div>
-                    <div className="mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#FF9F1C]/15">
-                      <FileText className="h-7 w-7 text-[#FF9F1C]" strokeWidth={2.5} />
-                    </div>
-                    <p className="mb-2 text-sm font-bold uppercase tracking-[0.16em] text-[#2A9D8F]">
-                      Story {index + 1}
+                    <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#2A9D8F]">
+                      PDF preview
                     </p>
-                    <h2 className="text-2xl font-semibold text-[#1E1B4B]" style={{ fontFamily: "Fredoka" }}>
-                      {story.title}
+                    <h2 className="text-xl font-semibold text-[#1E1B4B]" style={{ fontFamily: "Fredoka" }}>
+                      {selectedStory.title}
                     </h2>
-                    <p className="mt-3 text-sm leading-relaxed text-[#1E1B4B]/65">
-                      Open the PDF to read this sample storybook in a new tab.
-                    </p>
                   </div>
-                  <Button asChild className="mt-8 rounded-full bg-[#FF9F1C] font-bold text-[#1E1B4B] hover:bg-[#E88A12]">
-                    <a href={story.pdfLink} target="_blank" rel="noopener noreferrer">
-                      Read Sample
-                      <ExternalLink className="h-4 w-4" strokeWidth={2.5} />
-                    </a>
-                  </Button>
-                </article>
-              ))}
+                  <p className="text-sm text-[#1E1B4B]/55">
+                    Scroll inside the preview to read
+                  </p>
+                </div>
+                <div
+                  className="h-[72vh] min-h-[520px] bg-[#F3E8FF]/35"
+                  onContextMenu={(event) => event.preventDefault()}
+                >
+                  <iframe
+                    key={selectedStory.id}
+                    src={getPdfEmbedUrl(selectedStory.pdfLink)}
+                    title={`${selectedStory.title} PDF preview`}
+                    className="h-full w-full"
+                    loading="lazy"
+                    referrerPolicy="no-referrer"
+                    onContextMenu={(event) => event.preventDefault()}
+                  />
+                </div>
+              </article>
             </div>
-          )}
+          ) : null}
         </section>
       </main>
     </div>

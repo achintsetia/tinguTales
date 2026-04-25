@@ -5,35 +5,117 @@ import { addDoc, collection, getDocs, serverTimestamp } from "firebase/firestore
 import AuthModal from "../components/AuthModal";
 import Seo from "../components/Seo";
 import { Button } from "../components/ui/button";
-import { BookOpen, Sparkles, Globe, Palette, Download, Heart } from "lucide-react";
+import {
+  BadgeCheck,
+  BookOpen,
+  ClipboardCheck,
+  CreditCard,
+  Download,
+  Edit3,
+  FileText,
+  Heart,
+  Image,
+  Languages,
+  Palette,
+  ShieldCheck,
+  Sparkles,
+  UserRound,
+  UsersRound,
+} from "lucide-react";
 import { HOMEPAGE_FAQS } from "../content/faqs";
 import { db } from "../firebase";
 import { Analytics } from "../lib/analytics";
 
-const FEATURES = [
+const STORYBOOK_FEATURES = [
   {
-    icon: Globe,
-    title: "9 Story Languages",
-    desc: "Generate stories in English, Hindi, Kannada, Tamil, Telugu, Marathi, Bengali, Gujarati, and Malayalam",
+    icon: UserRound,
+    title: "Child as the Hero",
+    desc: "Create a profile with your child's name, age, and photo so the story is written around them.",
+    color: "#3730A3",
+  },
+  {
+    icon: BadgeCheck,
+    title: "Consistent Hero Look",
+    desc: "A structured character card helps keep the child's face, hair, outfit, and accessories consistent across pages.",
+    color: "#FF9F1C",
+  },
+  {
+    icon: UsersRound,
+    title: "Supporting Character Continuity",
+    desc: "Recurring people, animals, vehicles, objects, and places get visual notes so they stay recognizable through the book.",
+    color: "#2A9D8F",
+  },
+  {
+    icon: Languages,
+    title: "9 Indian Languages",
+    desc: "Create stories in English, Hindi, Kannada, Tamil, Telugu, Marathi, Bengali, Gujarati, and Malayalam, with native-script child name support.",
+    color: "#E76F51",
+  },
+  {
+    icon: BookOpen,
+    title: "Age-Matched Vocabulary",
+    desc: "The story adapts sentence length, rhythm, and vocabulary to the child's age, from toddlers to confident readers.",
     color: "#3730A3",
   },
   {
     icon: Sparkles,
-    title: "AI-Powered Stories",
-    desc: "Personalized adventures featuring your child as the hero of every tale",
+    title: "Themes, Interests & Templates",
+    desc: "Choose interests like space, animals, music, festivals, mythology, bedtime, learning, and special occasions.",
     color: "#FF9F1C",
   },
   {
-    icon: Palette,
-    title: "Beautiful Illustrations",
-    desc: "Every page brought to life with AI-generated colorful artwork",
+    icon: Heart,
+    title: "Personal Incidents",
+    desc: "Add a custom moment or milestone so the story can reflect something meaningful from your child's life.",
+    color: "#E76F51",
+  },
+  {
+    icon: FileText,
+    title: "Flexible Page Counts",
+    desc: "Pick the book length that fits your child, with cover, story pages, and a warm back cover.",
     color: "#2A9D8F",
   },
   {
+    icon: Edit3,
+    title: "Review & Edit First",
+    desc: "Read and edit the draft text, cover title, and subtitle before illustration generation begins.",
+    color: "#3730A3",
+  },
+  {
+    icon: Palette,
+    title: "Full-Page Illustrations",
+    desc: "Each page is turned into a colorful portrait storybook illustration with Indian cultural details.",
+    color: "#FF9F1C",
+  },
+  {
+    icon: ClipboardCheck,
+    title: "Quality Review Flow",
+    desc: "Generated pages go through checks for malformed, unsafe, or text-heavy outputs, with retry and correction support.",
+    color: "#2A9D8F",
+  },
+  {
+    icon: CreditCard,
+    title: "Secure Checkout & Refund Review",
+    desc: "Payments run through Razorpay, and families can request review if AI image defects appear after generation.",
+    color: "#3730A3",
+  },
+  {
     icon: Download,
-    title: "Download & Share",
-    desc: "Export your storybook as PDF to print, gift, or share with family",
+    title: "Printable PDF Storybook",
+    desc: "Finished pages are assembled into a downloadable PDF that you can print, save, gift, or share.",
     color: "#E76F51",
+  },
+  {
+    icon: Image,
+    title: "Sample Stories & Covers",
+    desc: "Preview sample PDFs and real generated covers before creating your own personalized book.",
+    color: "#3730A3",
+  },
+  {
+    icon: ShieldCheck,
+    title: "Privacy Controls",
+    desc: "After avatar creation, the original uploaded photo can be deleted while keeping the story avatar intact.",
+    color: "#2A9D8F",
   },
 ];
 
@@ -317,6 +399,46 @@ export default function LandingPage() {
         )}
       </section>
 
+      {/* Features */}
+      <section className="max-w-7xl mx-auto px-6 py-24">
+        <div className="text-center mb-16">
+          <span className="text-sm uppercase tracking-[0.2em] font-bold text-[#FF9F1C] mb-4 block">
+            Storybook features
+          </span>
+          <h2
+            className="text-2xl sm:text-3xl lg:text-4xl tracking-tight font-medium text-[#1E1B4B]"
+            style={{ fontFamily: "Fredoka" }}
+          >
+            Everything built into a Tingu Tales book
+          </h2>
+          <p className="mt-4 max-w-2xl mx-auto text-[#1E1B4B]/65 leading-relaxed">
+            From character continuity to age-aware writing and printable PDFs, the storybook flow is designed for families who want a polished, personal keepsake.
+          </p>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+          {STORYBOOK_FEATURES.map((f) => (
+            <div
+              key={f.title}
+              className="bg-white rounded-3xl p-6 border-2 border-[#F3E8FF] card-hover"
+            >
+              <div
+                className="w-12 h-12 rounded-2xl flex items-center justify-center mb-5"
+                style={{ backgroundColor: f.color + "15" }}
+              >
+                <f.icon className="w-6 h-6" style={{ color: f.color }} strokeWidth={2.5} />
+              </div>
+              <h3
+                className="text-lg font-medium text-[#1E1B4B] mb-3"
+                style={{ fontFamily: "Fredoka" }}
+              >
+                {f.title}
+              </h3>
+              <p className="text-[#1E1B4B]/65 leading-relaxed">{f.desc}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
       {/* FAQ for AEO */}
       <section className="max-w-5xl mx-auto px-6 pb-24" aria-label="Frequently asked questions">
         <div className="text-center mb-12">
@@ -342,43 +464,6 @@ export default function LandingPage() {
           <Button asChild variant="outline" className="rounded-full border-[#1E1B4B]/15 px-6 font-semibold text-[#1E1B4B] hover:bg-[#1E1B4B]/5">
             <Link to="/faq">View all FAQs</Link>
           </Button>
-        </div>
-      </section>
-
-      {/* Features */}
-      <section className="max-w-7xl mx-auto px-6 py-24">
-        <div className="text-center mb-16">
-          <span className="text-sm uppercase tracking-[0.2em] font-bold text-[#FF9F1C] mb-4 block">
-            How it works
-          </span>
-          <h2
-            className="text-2xl sm:text-3xl lg:text-4xl tracking-tight font-medium text-[#1E1B4B]"
-            style={{ fontFamily: "Fredoka" }}
-          >
-            Stories that speak their language
-          </h2>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
-          {FEATURES.map((f, i) => (
-            <div
-              key={i}
-              className="bg-white rounded-3xl p-8 border-2 border-[#F3E8FF] card-hover"
-            >
-              <div
-                className="w-14 h-14 rounded-2xl flex items-center justify-center mb-5"
-                style={{ backgroundColor: f.color + "15" }}
-              >
-                <f.icon className="w-7 h-7" style={{ color: f.color }} strokeWidth={2.5} />
-              </div>
-              <h3
-                className="text-xl font-medium text-[#1E1B4B] mb-3"
-                style={{ fontFamily: "Fredoka" }}
-              >
-                {f.title}
-              </h3>
-              <p className="text-[#1E1B4B]/65 leading-relaxed">{f.desc}</p>
-            </div>
-          ))}
         </div>
       </section>
 
