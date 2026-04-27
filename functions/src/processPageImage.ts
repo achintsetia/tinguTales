@@ -179,15 +179,18 @@ export const processPageImage = onTaskDispatched<PageImageTaskPayload>(
                 "Create full-page storybook illustrations that are joyful, colourful, and age-appropriate. " +
                 "Always output a single illustration image in 3:4 portrait orientation. " +
                 "For interior story pages, if the prompt references a story sentence, " +
-                "leave the bottom 30% as calm natural background for later app typesetting; do not draw any " +
+                "leave the bottom 35% as calm natural background for later app typesetting; do not draw any " +
                 "text box, banner, parchment, plaque, scroll, speech bubble, caption panel, label area, or blank card. " +
-                "Keep the child, faces, hands, legs, feet, clothing, key objects, and main action above that text-safe area. " +
+                "The child character must be FULLY VISIBLE from head to toe — never crop, cut off, or hide the character's feet, legs, or lower body. " +
+                "Place the ground/floor line at or above the 65% mark from the top of the image so the character's feet are clearly visible above the text-safe zone. " +
+                "Keep all characters, key objects, and main action completely above the bottom 35% text-safe area. " +
                 "Never draw letters, words, numbers, signs, fake writing, or random text on interior story pages. " +
                 "If the prompt lists required visual story anchors, make each one clearly visible and recognizable. " +
                 "For cover and back-cover pages, follow the prompt's text instructions normally. " +
                 "Character consistency is paramount: the child protagonist must look identical across every page — " +
                 "same face, hair, skin tone, AND clothing. The top garment (shirt/kurta/blouse/top) and bottom garment " +
-                "(pants/skirt/lehenga/dhoti) must exactly match the provided reference avatar image in colour, style, and pattern.",
+                "(pants/skirt/lehenga/dhoti) must exactly match the provided reference avatar image in colour, style, and pattern. " +
+                "Footwear must also be consistent: the child's shoes, sandals, chappals, or bare feet must remain identical in style and colour across every page.",
               },
             });
 

@@ -203,7 +203,9 @@ export function buildIllustrationPrompt(payload: PageImageTaskPayload): string {
     "this EXACT lower garment color and style must appear on EVERY page without exception. " +
     "CRITICAL: Keep the character's clothing EXACTLY as shown in the provided reference avatar image — " +
     "the top garment (shirt/top/blouse/kurta) and bottom garment (pants/skirt/lehenga/dhoti) must match " +
-    "the avatar reference in colour, style, and pattern on every single page."
+    "the avatar reference in colour, style, and pattern on every single page. " +
+    "Footwear must also be consistent on every page: the child's shoes, sandals, chappals, or bare feet must remain " +
+    "identical in style, colour, and type — never switch or omit footwear mid-story."
   ) : "";
 
   const supportingCharDesc = supportingChars.length > 0 ?
@@ -282,9 +284,11 @@ export function buildIllustrationPrompt(payload: PageImageTaskPayload): string {
     ) : "") +
     (storyText ? (
       "IMPORTANT TEXT-SAFE COMPOSITION RULE: our app will typeset the story text after generation. " +
-      "Leave the bottom 30% of the page visually calm and uncluttered, with only natural background " +
-      "such as grass, sky, wall, floor, water, or soft scenery texture. Keep the protagonist's face, body, " +
-      "hands, legs, feet, clothing, important character details, key objects, and main action above this bottom text-safe area. " +
+      "Leave the bottom 35% of the page visually calm and uncluttered, with only natural background " +
+      "such as grass, sky, wall, floor, water, or soft scenery texture. " +
+      "The child protagonist must be FULLY VISIBLE from head to toe — their feet, legs, and entire lower body must be completely visible and must NOT be cropped or cut off. " +
+      "Position the ground/floor line at or above 65% from the top of the image so all characters stand fully above the text-safe area. " +
+      "Keep all characters, important character details, key objects, and main action completely within the top 65% of the image. " +
       "Do NOT draw or imply any text box, banner, parchment, plaque, scroll, rounded rectangle, speech bubble, " +
       "caption panel, frame, label area, blank card, or decorative writing area anywhere in the image. " +
       "Do not render the story sentence visually. " +

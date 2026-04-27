@@ -1812,21 +1812,21 @@ export default function AdminPage() {
               <X className="w-5 h-5" strokeWidth={2} />
             </button>
             <div
-              className="relative max-h-[90vh] max-w-[90vw]"
+              className="flex flex-col w-fit max-w-[90vw] max-h-[90vh]"
               onClick={(e) => e.stopPropagation()}
             >
               <img
                 src={lightbox.url}
                 alt={lightbox.label}
-                className={`max-h-[90vh] max-w-[90vw] object-contain shadow-2xl block ${
+                className={`w-auto max-w-[90vw] object-contain shadow-2xl block ${
                   lightbox.text ? "rounded-t-2xl" : "rounded-2xl"
                 }`}
                 style={{ maxHeight: lightbox.text ? "72vh" : "90vh" }}
               />
               {lightbox.text && (
-                <div className="rounded-b-2xl bg-black/75 px-4 py-3 max-h-[18vh] overflow-y-auto">
+                <div className="rounded-b-2xl bg-black/75 px-4 py-3 max-h-[18vh] overflow-y-auto w-full">
                   <p className="text-[11px] font-semibold text-white/50 uppercase tracking-wider mb-1">{lightbox.label}</p>
-                  <p className="font-story text-base text-white leading-relaxed whitespace-pre-wrap">{lightbox.text}</p>
+                  <p className="font-story text-base text-white leading-relaxed whitespace-pre-wrap break-words">{lightbox.text}</p>
                 </div>
               )}
             </div>

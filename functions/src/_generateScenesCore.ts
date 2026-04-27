@@ -373,8 +373,10 @@ async function generateScenePrompts(
     "Rich Indian cultural elements (architecture, nature, clothing). " +
     "If the page text mentions a specific food, object, animal, vehicle, place, or important prop, " +
     "make that visual anchor clearly visible and recognizable in the scene. " +
-    "Leave the bottom 30% calm and simple for app-added text, but do not draw text, letters, signs, " +
-    "speech bubbles, banners, plaques, labels, or fake writing anywhere on story pages.\n" +
+    "Leave the bottom 35% calm and simple for app-added text, but do not draw text, letters, signs, " +
+    "speech bubbles, banners, plaques, labels, or fake writing anywhere on story pages. " +
+    "The child character must always be FULLY VISIBLE from head to toe \u2014 place the ground/floor line at or above 65% from the top so feet are never cropped. " +
+    "Scene descriptions must position characters so their entire body fits within the top 65% of the image.\n" +
     "Scene prompts for story pages must describe only the illustration scene and must not request text areas, " +
     "written words, captions, labels, typography, or blank panels.\n" +
     `- Page ${backCoverIndex} (BACK COVER + BRANDING): warm sunset/floral Indian motifs. ` +
