@@ -586,10 +586,14 @@ export default function LandingPage() {
 
       {/* Footer */}
       <footer className="border-t border-[#F3E8FF] py-8">
-        <div className="max-w-7xl mx-auto px-6 flex items-center justify-between text-sm text-[#1E1B4B]/50">
+        <div className="max-w-7xl mx-auto px-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-sm text-[#1E1B4B]/50">
           <div className="flex items-center gap-2">
             <img src="/favicon.png" alt="" className="w-6 h-6" />
             <span style={{ fontFamily: "Fredoka" }}>Tingu <span className="text-[#FF9F1C]">Tales</span></span>
+          </div>
+          <div className="flex items-center gap-4 text-xs">
+            <Link to="/terms" className="hover:text-[#3730A3] transition-colors">Terms &amp; Policies</Link>
+            <Link to="/faq" className="hover:text-[#3730A3] transition-colors">FAQ</Link>
           </div>
           <div className="text-right">
             <p>Made with love for little readers</p>
