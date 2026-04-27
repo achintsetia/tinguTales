@@ -3,6 +3,7 @@ import {FieldValue} from "firebase-admin/firestore";
 import {GoogleGenAI} from "@google/genai";
 import {v4 as uuidv4} from "uuid";
 import {db, bucket} from "./admin.js";
+import {GEMINI_QA_TIMEOUT_MS} from "./geminiConfig.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -28,6 +29,8 @@ export interface PageImageTaskPayload {
 export interface ImageQaInput {
   pageType: string;
   requiredText: string[];
+  requiredVisualElements?: string[];
+  forbidText?: boolean;
 }
 
 export interface ImageQaResult {
@@ -77,6 +80,81 @@ export async function saveWithDownloadUrl(
   });
   const encodedPath = encodeURIComponent(filePath);
   return `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodedPath}?alt=media&token=${token}`;
+}
+
+const VISUAL_ELEMENT_RULES: Array<{patterns: RegExp[]; label: string}> = [
+  {
+    patterns: [/\bmango cake\b/i],
+    label: "a large, clearly visible mango cake",
+  },
+  {
+    patterns: [/\bbirthday cake\b/i],
+    label: "a clearly visible birthday cake",
+  },
+  {
+    patterns: [/\bcake\b/i],
+    label: "a clearly visible cake",
+  },
+  {
+    patterns: [/\btoy plane\b/i, /\btoy airplane\b/i],
+    label: "a clearly visible toy plane",
+  },
+  {
+    patterns: [/\bairplane\b/i, /\bplane\b/i],
+    label: "a clearly visible plane",
+  },
+  {
+    patterns: [/\briver\b/i],
+    label: "a clearly visible river",
+  },
+  {
+    patterns: [/\bleaf\b/i, /\bleaves\b/i],
+    label: "clearly visible leaves",
+  },
+  {
+    patterns: [/\bbanyan tree\b/i],
+    label: "a clearly visible banyan tree",
+  },
+];
+
+/**
+ * Infers important story objects that should be visible in the illustration.
+ * @param {PageImageTaskPayload} payload - Page image task payload.
+ * @return {string[]} Required visual anchors.
+ */
+export function inferRequiredVisualElements(payload: PageImageTaskPayload): string[] {
+  if (payload.pageType !== "story") return [];
+
+  const source = `${payload.text || ""}\n${payload.scenePrompt || ""}`;
+  const elements: string[] = [];
+
+  for (const rule of VISUAL_ELEMENT_RULES) {
+    if (rule.patterns.some((pattern) => pattern.test(source))) {
+      elements.push(rule.label);
+    }
+  }
+
+  try {
+    const entities = JSON.parse(payload.commonContextEntitiesJson) as Array<{
+      name?: string;
+      category?: string;
+      role?: string;
+      appearance?: string;
+    }>;
+    if (Array.isArray(entities)) {
+      for (const entity of entities) {
+        const name = String(entity.name || "").trim();
+        const category = String(entity.category || "").trim();
+        if (!name || !/(object|animal|vehicle|place|other)/i.test(category)) continue;
+        if (!new RegExp(`\\b${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(source)) continue;
+        elements.push(`clearly visible ${name}${entity.appearance ? ` (${entity.appearance})` : ""}`);
+      }
+    }
+  } catch {
+    // Ignore malformed context metadata; keyword rules still cover common props.
+  }
+
+  return Array.from(new Set(elements)).slice(0, 5);
 }
 
 /**
@@ -189,6 +267,7 @@ export function buildIllustrationPrompt(payload: PageImageTaskPayload): string {
   }
 
   const storyText = payload.text || "";
+  const requiredVisualElements = inferRequiredVisualElements(payload);
   return (
     "Create a vibrant children's storybook interior PAGE illustration in warm Indian style. " +
     `${characterDesc} ` +
@@ -196,14 +275,21 @@ export function buildIllustrationPrompt(payload: PageImageTaskPayload): string {
     `${supportingCharDesc}` +
     `Scene: ${payload.scenePrompt} ` +
     "Full 3:4 portrait format, bright and joyful colours. " +
+    (requiredVisualElements.length > 0 ? (
+      "REQUIRED VISUAL STORY ANCHORS — these must be clearly visible, recognizable, and not hidden, cropped, " +
+      "or covered by the bottom text-safe area: " +
+      requiredVisualElements.map((item) => `"${item}"`).join(", ") + ". "
+    ) : "") +
     (storyText ? (
-      "IMPORTANT: Include the following story text legibly inside the illustration, " +
-      "rendered in a clean child-friendly font in a calm area of the image " +
-      "(e.g. a text band at the bottom, a sky area, or a scroll/banner element): " +
-      `"${storyText}" ` +
-      "The text must be fully readable and completely fit within the image boundaries. " +
-      "Render this story text EXACTLY ONCE in the entire image. " +
-      "Do not repeat, duplicate, echo, or restate the same sentence anywhere else on the page."
+      "IMPORTANT TEXT-SAFE COMPOSITION RULE: our app will typeset the story text after generation. " +
+      "Leave the bottom 30% of the page visually calm and uncluttered, with only natural background " +
+      "such as grass, sky, wall, floor, water, or soft scenery texture. Keep the protagonist's face, body, " +
+      "hands, legs, feet, clothing, important character details, key objects, and main action above this bottom text-safe area. " +
+      "Do NOT draw or imply any text box, banner, parchment, plaque, scroll, rounded rectangle, speech bubble, " +
+      "caption panel, frame, label area, blank card, or decorative writing area anywhere in the image. " +
+      "Do not render the story sentence visually. " +
+      "Do NOT render any letters, words, numbers, watermarks, or pseudo-text anywhere in the image. " +
+      "Do not repeat, duplicate, echo, or restate the sentence visually."
     ) : "")
   );
 }
@@ -223,17 +309,39 @@ export async function verifyGeneratedImageQuality(
   qaModelName: string
 ): Promise<ImageQaResult> {
   const requiredText = qaInput.requiredText.map((item) => item.trim()).filter(Boolean);
+  const requiredVisualElements = (qaInput.requiredVisualElements ?? [])
+    .map((item) => item.trim())
+    .filter(Boolean);
   try {
     const imgB64 = imageBuffer.toString("base64");
-    const requiredTextSection = requiredText.length > 0 ?
-      requiredText.map((item) => `- "${item}"`).join("\n") :
+    const requiredTextSection = qaInput.forbidText ?
+      "- None allowed. The image must contain zero letters, words, numbers, pseudo-text, signs, captions, or labels." :
+      requiredText.length > 0 ?
+        requiredText.map((item) => `- "${item}"`).join("\n") :
+        "- None";
+    const requiredVisualSection = requiredVisualElements.length > 0 ?
+      requiredVisualElements.map((item) => `- ${item}`).join("\n") :
       "- None";
-    const extraTextRule = qaInput.pageType === "cover" ?
-      "For cover pages, FAIL if any visible text appears beyond the required title/subtitle lines." :
-      "Extra decorative text is allowed only if it is part of the requested page design.";
-    const duplicateTextRule = qaInput.pageType === "story" ?
-      "For story pages, FAIL if the same story text appears in multiple places (for example both top and bottom). " +
-      "The required story text must appear once only." :
+    const extraTextRule = qaInput.forbidText ?
+      "FAIL if any visible text, pseudo-text, watermark, stray letters, numbers, signs, labels, " +
+      "or fake writing appears anywhere in the image." :
+      qaInput.pageType === "story" ?
+        "For story pages, FAIL if any visible text, pseudo-text, watermark, stray letters, repeated words, " +
+        "or extra text block appears beyond the required story text." :
+        "FAIL if any visible text appears beyond the required text.";
+    const duplicateTextRule = !qaInput.forbidText && qaInput.pageType === "story" ?
+      "For story pages, FAIL if the required story text is duplicated, split into multiple repeated blocks, " +
+      "or shown more than once." :
+      "";
+    const storyOverlayRule = !qaInput.forbidText && qaInput.pageType === "story" ?
+      "For story pages, FAIL if there is more than one caption/text panel, or if there are empty decorative " +
+      "text boxes, banners, scrolls, plaques, speech bubbles, blank label areas, or unused writing panels anywhere. " +
+      "Also FAIL if the story text or its background panel covers the protagonist's face, torso, hands, " +
+      "legs, feet, clothing, important character details, key object, or main action." :
+      "";
+    const visualElementsRule = requiredVisualElements.length > 0 ?
+      "FAIL if any required visual story anchor is missing, hidden, too tiny/ambiguous to recognize, cropped, " +
+      "covered by the caption panel, or contradicted by the image." :
       "";
     const response = await ai.models.generateContent({
       model: qaModelName,
@@ -250,12 +358,18 @@ export async function verifyGeneratedImageQuality(
               "1. The image looks partially generated, unfinished, corrupted, or malformed.\n" +
               "2. Any edge, especially the top area, has an abrupt blank, flat, unpainted, duplicated, cropped, or broken strip/band/block.\n" +
               "3. Important artwork or text is cut off, clipped, malformed, or only partly visible.\n" +
-              "4. Required text is missing, illegible, or only partially readable.\n" +
+              (qaInput.forbidText ?
+                "4. Any text, pseudo-text, letters, words, numbers, signs, labels, or watermark is visible.\n" :
+                "4. Required text is missing, illegible, or only partially readable.\n") +
               `5. ${extraTextRule}\n` +
               (duplicateTextRule ? `6. ${duplicateTextRule}\n` : "") +
-              "7. The composition does not look like a complete, intentional full-page illustration.\n\n" +
+              (storyOverlayRule ? `7. ${storyOverlayRule}\n` : "") +
+              (visualElementsRule ? `8. ${visualElementsRule}\n` : "") +
+              "9. The composition does not look like a complete, intentional full-page illustration.\n\n" +
               "Required visible text:\n" +
               `${requiredTextSection}\n\n` +
+              "Required visual story anchors:\n" +
+              `${requiredVisualSection}\n\n` +
               "Be strict. If you are uncertain, respond FAIL.\n" +
               "Respond in exactly one line using one of these formats only:\n" +
               "PASS\n" +
@@ -263,6 +377,9 @@ export async function verifyGeneratedImageQuality(
           },
         ],
       }],
+      config: {
+        httpOptions: {timeout: GEMINI_QA_TIMEOUT_MS},
+      },
     });
     const answer = response.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
     const normalizedAnswer = answer.trim();

@@ -2125,7 +2125,7 @@ export default function CreateStory() {
                   <h2 className="text-2xl sm:text-3xl tracking-tight font-medium text-[#1E1B4B]" style={{ fontFamily: "Fredoka" }}>
                     Writing your story...
                   </h2>
-                  <p className="text-[#1E1B4B]/50 mt-1 text-sm">This usually takes 10-15 minutes. Sit tight!</p>
+                  <p className="text-[#1E1B4B]/50 mt-1 text-sm">This usually takes 2-3 minutes. Sit tight!</p>
                 </div>
 
                 {/* Step progress (single active step to save space) */}
@@ -2304,7 +2304,7 @@ export default function CreateStory() {
                           }}
                           readOnly={isBackCover}
                           rows={4}
-                          className={`w-full rounded-2xl border-2 px-4 py-3 text-sm text-[#1E1B4B] resize-none transition-colors ${selectedLang?.font || ""} ${
+                          className={`w-full rounded-2xl border-2 px-4 py-3 text-base leading-relaxed text-[#1E1B4B] resize-none transition-colors font-story ${selectedLang?.font || ""} ${
                             isBackCover
                               ? "border-transparent bg-[#FDFBF7] text-[#1E1B4B]/40 cursor-default"
                               : "border-[#F3E8FF] focus:border-[#FF9F1C] focus:outline-none bg-[#FDFBF7]"

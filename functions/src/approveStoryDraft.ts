@@ -2,6 +2,7 @@ import * as logger from "firebase-functions/logger";
 import {onCall, HttpsError} from "firebase-functions/v2/https";
 import {FieldValue} from "firebase-admin/firestore";
 import {db} from "./admin.js";
+import {normalizeBackCoverText} from "./_backCoverLessonText.js";
 
 interface ApproveStoryDraftRequest {
   storyId: string;
@@ -46,16 +47,12 @@ export const approveStoryDraft = onCall<ApproveStoryDraftRequest>(
       const isBackCover = p.page_type === "back_cover" || p.page === expectedBackCoverPage;
       if (!isBackCover) return p;
 
-      const raw = String(p.text ?? "").trim();
-      const hasNonAscii = Array.from(raw).some((ch) => ch.charCodeAt(0) > 127);
-      const hasEnglishName = childEnglishName ? raw.toLowerCase().includes(childEnglishName.toLowerCase()) : true;
-      const hasBranding = raw.toLowerCase().includes("tingutales.com");
-      if (!hasNonAscii && hasEnglishName && hasBranding) return p;
-
-      const fallback =
-        `${childEnglishName} learned an important lesson today. ` +
-        "Try it in your own adventure too!\n\n";
-      return {...p, text: fallback};
+      const normalizedText = normalizeBackCoverText(
+        String(p.text ?? ""),
+        childEnglishName,
+        String(story.moral ?? "")
+      );
+      return {...p, text: normalizedText};
     });
 
     // Sync user-edited title/subtitle from cover page back to story-level fields

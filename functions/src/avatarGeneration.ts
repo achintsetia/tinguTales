@@ -1,9 +1,15 @@
 import * as logger from "firebase-functions/logger";
 import {bucket, db} from "./admin.js";
-import {GoogleGenAI} from "@google/genai";
 import sharp from "sharp";
 import {v4 as uuidv4} from "uuid";
 import {recordTokenConsumption} from "./tokenConsumption.js";
+import {
+  DEFAULT_GEMINI_IMAGE_MODEL,
+  GEMINI_AVATAR_TIMEOUT_MS,
+  GEMINI_MODEL_CONFIG_KEYS,
+  createGeminiClient,
+  getConfiguredGeminiModel,
+} from "./geminiConfig.js";
 
 /**
  * Upload a buffer to Storage with a download token, return the public Firebase download URL.
@@ -59,9 +65,9 @@ export async function generateAvatar(
 
   // Download photo and fetch model config in parallel
   logger.info(`[generateAvatar] downloading photo from ${photoUrl} (parallel with model doc fetch)`);
-  const [[photoBytes], modelDoc] = await Promise.all([
+  const [[photoBytes], modelName] = await Promise.all([
     bucket.file(photoUrl).download(),
-    db.collection("models").doc("avatar_generation_model").get(),
+    getConfiguredGeminiModel(GEMINI_MODEL_CONFIG_KEYS.avatarGeneration, DEFAULT_GEMINI_IMAGE_MODEL),
   ]);
   logger.info(`[generateAvatar] photo downloaded — raw size=${photoBytes.length}B`);
 
@@ -75,16 +81,9 @@ export async function generateAvatar(
   const mimeType = "image/jpeg";
   logger.info(`[generateAvatar] photo resized — compressed size=${processedPhoto.length}B`);
 
-  const ai = new GoogleGenAI({
-    apiKey,
-    httpOptions: {timeout: 90000}, // 90 seconds — fail fast so user can retry quickly
-  });
+  const ai = createGeminiClient(apiKey, GEMINI_AVATAR_TIMEOUT_MS);
 
-  const modelName: string = modelDoc.exists &&
-    (modelDoc.data()?.name as string) ?
-    (modelDoc.data()?.name as string) :
-    "gemini-2.0-flash-preview-image-generation";
-  logger.info(`[generateAvatar] using model=${modelName}`);
+  logger.info(`[generateAvatar] using model=${modelName}, timeoutMs=${GEMINI_AVATAR_TIMEOUT_MS}`);
 
   const prompt =
     "Transform this child's photo into a cute, adorable cartoon avatar for a children's storybook. " +

@@ -3,6 +3,14 @@ import {FieldValue} from "firebase-admin/firestore";
 import {GoogleGenAI} from "@google/genai";
 import {db, bucket} from "./admin.js";
 import {recordTokenConsumption} from "./tokenConsumption.js";
+import {
+  DEFAULT_GEMINI_TEXT_MODEL,
+  GEMINI_TEXT_TIMEOUT_MS,
+  GEMINI_MODEL_CONFIG_KEYS,
+  createGeminiClient,
+  getConfiguredGeminiModel,
+} from "./geminiConfig.js";
+import {normalizeBackCoverText} from "./_backCoverLessonText.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -143,6 +151,7 @@ async function describeAvatarAsCharacterCard(
       ],
     }],
     config: {
+      responseMimeType: "application/json",
       systemInstruction:
         "You are a character designer for children's storybooks. " +
         "Describe character appearances with extreme precision so an illustrator can reproduce " +
@@ -229,6 +238,7 @@ async function extractCommonContextEntities(
     model,
     contents: [{role: "user", parts: [{text: prompt}]}],
     config: {
+      responseMimeType: "application/json",
       systemInstruction:
         "You are a visual continuity director for Indian children's picture books. " +
         "Extract all recurring entities that must remain visually consistent across pages. " +
@@ -305,7 +315,7 @@ async function generateScenePrompts(
   const pagesInfo = draftPages.map((p) => ({
     page: p.page,
     type: p.page_type ?? "story",
-    text_excerpt: (p.text ?? "").slice(0, 120),
+    text_excerpt: (p.text ?? "").slice(0, 360),
   }));
 
   const characterDesc = [
@@ -361,7 +371,12 @@ async function generateScenePrompts(
     `- Pages ${storyPageRange} (STORY): vivid scene, ${childName} as visual focus. ` +
     `Use ${pronoun.sub}/${pronoun.obj} pronouns. ` +
     "Rich Indian cultural elements (architecture, nature, clothing). " +
-    "Space in upper third for story text.\n" +
+    "If the page text mentions a specific food, object, animal, vehicle, place, or important prop, " +
+    "make that visual anchor clearly visible and recognizable in the scene. " +
+    "Leave the bottom 30% calm and simple for app-added text, but do not draw text, letters, signs, " +
+    "speech bubbles, banners, plaques, labels, or fake writing anywhere on story pages.\n" +
+    "Scene prompts for story pages must describe only the illustration scene and must not request text areas, " +
+    "written words, captions, labels, typography, or blank panels.\n" +
     `- Page ${backCoverIndex} (BACK COVER + BRANDING): warm sunset/floral Indian motifs. ` +
     `Small cheerful portrait of ${childName}` + "'s avatar in one corner. " +
     "Space in the centre for TinguTales.com branding.\n\n" +
@@ -374,6 +389,7 @@ async function generateScenePrompts(
     model,
     contents: [{role: "user", parts: [{text: prompt}]}],
     config: {
+      responseMimeType: "application/json",
       systemInstruction:
         "You are an experienced art director for Indian children's picture books. " +
         "Create detailed, evocative image generation prompts that faithfully follow the " +
@@ -432,6 +448,7 @@ export async function runScenePipeline(storyId: string): Promise<void> {
   const userId: string = data.user_id ?? "";
   const profileId: string = data.profile_id ?? "";
   const childName: string = data.child_name ?? "the child";
+  const childEnglishName: string = data.child_name_english ?? childName;
   const childAge: number = data.child_age ?? 5;
   const numPages: number = data.page_count ?? 8;
   const storyTitle: string = data.title ?? "";
@@ -445,13 +462,13 @@ export async function runScenePipeline(storyId: string): Promise<void> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error("GEMINI_API_KEY is not configured");
 
-  const ai = new GoogleGenAI({apiKey});
+  const ai = createGeminiClient(apiKey, GEMINI_TEXT_TIMEOUT_MS);
 
-  const modelDoc = await db.collection("models").doc("story_generation_model").get();
-  const modelName: string =
-    modelDoc.exists && modelDoc.data()?.name ?
-      (modelDoc.data()?.name as string) :
-      "gemini-2.5-flash";
+  const modelName = await getConfiguredGeminiModel(
+    GEMINI_MODEL_CONFIG_KEYS.storyGeneration,
+    DEFAULT_GEMINI_TEXT_MODEL
+  );
+  logger.info(`[generateScenes] using model=${modelName}, timeoutMs=${GEMINI_TEXT_TIMEOUT_MS}`);
 
   let totalTokens = 0;
 
@@ -552,7 +569,13 @@ export async function runScenePipeline(storyId: string): Promise<void> {
     const pageDoc: SceneData = {
       page: idx,
       page_type: pageType,
-      text: draftPage?.text ?? "",
+      text: pageType === "back_cover" ?
+        normalizeBackCoverText(
+          draftPage?.text ?? "",
+          childEnglishName,
+          String(data.moral ?? "")
+        ) :
+        draftPage?.text ?? "",
       scene_prompt: item.scene_prompt,
       ...(idx === 0 ? {
         cover_title: storyTitle,

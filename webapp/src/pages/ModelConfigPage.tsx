@@ -29,7 +29,8 @@ interface GeminiModel {
 const MODEL_KEY_LABELS: Record<string, string> = {
   avatar_generation_model: "Avatar Generation",
   story_illustration_model: "Story Illustration",
-  story_writing_model: "Story Writing",
+  story_generation_model: "Story + Scene Generation",
+  image_qa_model: "Image QA",
 };
 
 export default function ModelConfigPage() {

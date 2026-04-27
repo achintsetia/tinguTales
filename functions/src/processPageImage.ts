@@ -2,7 +2,6 @@ import * as logger from "firebase-functions/logger";
 import {onTaskDispatched} from "firebase-functions/v2/tasks";
 import {getFunctions} from "firebase-admin/functions";
 import {FieldValue} from "firebase-admin/firestore";
-import {GoogleGenAI} from "@google/genai";
 import sharp from "sharp";
 import {db, bucket} from "./admin.js";
 import {recordTokenConsumption} from "./tokenConsumption.js";
@@ -11,10 +10,21 @@ import {
   ImageQaInput,
   saveWithDownloadUrl,
   buildIllustrationPrompt,
+  inferRequiredVisualElements,
   verifyGeneratedImageQuality,
   upsertFailedImageGeneration,
   failedImageDocId,
 } from "./_pageImageCore.js";
+import {renderDeterministicPageText} from "./_pageTextOverlay.js";
+import {
+  DEFAULT_GEMINI_IMAGE_MODEL,
+  DEFAULT_GEMINI_QA_MODEL,
+  GEMINI_IMAGE_TIMEOUT_MS,
+  GEMINI_MODEL_CONFIG_KEYS,
+  createGeminiClient,
+  getConfiguredGeminiModel,
+} from "./geminiConfig.js";
+import {normalizeBackCoverText} from "./_backCoverLessonText.js";
 
 export const processPageImage = onTaskDispatched<PageImageTaskPayload>(
   {
@@ -35,32 +45,44 @@ export const processPageImage = onTaskDispatched<PageImageTaskPayload>(
     } = request.data;
 
     const pageRef = db.collection("stories").doc(storyId).collection("pages").doc(pageId);
+    const requiredVisualElements = inferRequiredVisualElements(request.data);
 
     try {
+      if (request.data.pageType === "back_cover") {
+        const storySnap = await db.collection("stories").doc(storyId).get();
+        const story = storySnap.data() ?? {};
+        const normalizedText = normalizeBackCoverText(
+          request.data.text ?? "",
+          (story.child_name_english as string) || (story.child_name as string) || "",
+          String(story.moral ?? "")
+        );
+        if (normalizedText !== (request.data.text ?? "")) {
+          request.data.text = normalizedText;
+          await pageRef.set({text: normalizedText}, {merge: true});
+        }
+      }
+
       await pageRef.update({
         status: "processing",
+        image_generation_qa_status: "processing",
+        image_generation_qa_warning: "",
+        image_generation_qa_attempts: [],
+        image_generation_required_visual_elements: requiredVisualElements,
+        image_generation_attempt_started_at: FieldValue.serverTimestamp(),
         updated_at: FieldValue.serverTimestamp(),
       });
 
       const apiKey = process.env.GEMINI_API_KEY;
       if (!apiKey) throw new Error("GEMINI_API_KEY is not configured");
 
-      const ai = new GoogleGenAI({
-        apiKey,
-        httpOptions: {timeout: 300000},
-      });
+      const ai = createGeminiClient(apiKey, GEMINI_IMAGE_TIMEOUT_MS);
 
-      const modelDoc = await db.collection("models").doc("story_illustration_model").get();
-      const modelName: string =
-        modelDoc.exists && modelDoc.data()?.name ?
-          (modelDoc.data()?.name as string) :
-          "gemini-2.0-flash-preview-image-generation";
-
-      const qaModelDoc = await db.collection("models").doc("image_qa_model").get();
-      const qaModelName: string =
-        qaModelDoc.exists && qaModelDoc.data()?.name ?
-          (qaModelDoc.data()?.name as string) :
-          "gemini-2.0-flash";
+      const [modelName, qaModelName] = await Promise.all([
+        getConfiguredGeminiModel(GEMINI_MODEL_CONFIG_KEYS.storyIllustration, DEFAULT_GEMINI_IMAGE_MODEL),
+        getConfiguredGeminiModel(GEMINI_MODEL_CONFIG_KEYS.imageQa, DEFAULT_GEMINI_QA_MODEL),
+      ]);
+      logger.info(`[processPageImage] using model=${modelName}, timeoutMs=${GEMINI_IMAGE_TIMEOUT_MS}`);
+      logger.info(`[processPageImage] using qaModel=${qaModelName}`);
 
       let avatarB64: string | null = null;
       let avatarMimeType = "image/jpeg";
@@ -107,6 +129,24 @@ export const processPageImage = onTaskDispatched<PageImageTaskPayload>(
       let totalTokens = 0;
 
       const MAX_GEN_ATTEMPTS = 3;
+      const qaAttempts: Array<{
+        attempt: number;
+        stage: string;
+        passed: boolean;
+        reason: string;
+        at: string;
+      }> = [];
+      let qaStatus = "not_run";
+      let qaWarning = "";
+      const persistQaProgress = async () => {
+        await pageRef.set({
+          image_generation_qa_status: qaStatus,
+          image_generation_qa_warning: qaWarning,
+          image_generation_qa_attempts: qaAttempts.slice(-8),
+          image_generation_required_visual_elements: requiredVisualElements,
+          updated_at: FieldValue.serverTimestamp(),
+        }, {merge: true});
+      };
       const qaInput: ImageQaInput = {
         pageType: request.data.pageType,
         requiredText: (
@@ -116,6 +156,7 @@ export const processPageImage = onTaskDispatched<PageImageTaskPayload>(
               ["TinguTales.com", request.data.text || ""] :
               [request.data.text || ""]
         ).map((item) => item.trim()).filter(Boolean),
+        requiredVisualElements,
       };
 
       let finalImage: Buffer | null = null;
@@ -137,8 +178,13 @@ export const processPageImage = onTaskDispatched<PageImageTaskPayload>(
                 "You are a professional children's book illustrator specialising in warm, vibrant Indian art style. " +
                 "Create full-page storybook illustrations that are joyful, colourful, and age-appropriate. " +
                 "Always output a single illustration image in 3:4 portrait orientation. " +
-                "When story text or a title is requested, render it clearly and legibly within the image. " +
-                "When story text is requested for an interior page, place that text in exactly one location only — never duplicate it across multiple areas. " +
+                "For interior story pages, if the prompt references a story sentence, " +
+                "leave the bottom 30% as calm natural background for later app typesetting; do not draw any " +
+                "text box, banner, parchment, plaque, scroll, speech bubble, caption panel, label area, or blank card. " +
+                "Keep the child, faces, hands, legs, feet, clothing, key objects, and main action above that text-safe area. " +
+                "Never draw letters, words, numbers, signs, fake writing, or random text on interior story pages. " +
+                "If the prompt lists required visual story anchors, make each one clearly visible and recognizable. " +
+                "For cover and back-cover pages, follow the prompt's text instructions normally. " +
                 "Character consistency is paramount: the child protagonist must look identical across every page — " +
                 "same face, hair, skin tone, AND clothing. The top garment (shirt/kurta/blouse/top) and bottom garment " +
                 "(pants/skirt/lehenga/dhoti) must exactly match the provided reference avatar image in colour, style, and pattern.",
@@ -170,25 +216,88 @@ export const processPageImage = onTaskDispatched<PageImageTaskPayload>(
 
         totalTokens += totalTokensThisAttempt;
 
-        const resized = await sharp(responseImage)
+        const resizedImage = await sharp(responseImage)
           .resize({width: 768, height: 1024, fit: "cover", position: "centre"})
           .png()
           .toBuffer();
 
+        if (request.data.pageType === "story") {
+          const artQaResult = await verifyGeneratedImageQuality(resizedImage, {
+            pageType: request.data.pageType,
+            requiredText: [],
+            requiredVisualElements,
+            forbidText: true,
+          }, ai, qaModelName);
+          qaAttempts.push({
+            attempt: genAttempt,
+            stage: "artwork_pre_overlay",
+            passed: artQaResult.passed,
+            reason: artQaResult.reason,
+            at: new Date().toISOString(),
+          });
+          if (!artQaResult.passed) {
+            qaStatus = "artwork_warning";
+            qaWarning = artQaResult.reason;
+            await persistQaProgress();
+            logger.warn(
+              `[processPageImage] ART QA FAILED for page ${pageIndex} ` +
+              `(attempt ${genAttempt}) — ${artQaResult.reason}`
+            );
+            if (genAttempt === 1 && MAX_GEN_ATTEMPTS > 1) continue;
+          } else {
+            qaStatus = "processing";
+            await persistQaProgress();
+          }
+        }
+
+        let composedImage = resizedImage;
+        if (request.data.pageType === "story" && request.data.text.trim().length > 0) {
+          const overlayResult = await renderDeterministicPageText(resizedImage, request.data);
+          composedImage = overlayResult.imageBuffer;
+
+          logger.info("[processPageImage] deterministic text overlay applied", {
+            pageIndex,
+            pageType: request.data.pageType,
+            confidence: Number(overlayResult.region.confidence.toFixed(3)),
+            useFallbackBox: overlayResult.region.useFallbackBox,
+            region: {
+              left: overlayResult.region.left,
+              top: overlayResult.region.top,
+              width: overlayResult.region.width,
+              height: overlayResult.region.height,
+            },
+          });
+        }
+
         if (qaInput.requiredText.length > 0 || request.data.pageType === "cover") {
-          const qaResult = await verifyGeneratedImageQuality(resized, qaInput, ai, qaModelName);
+          const qaResult = await verifyGeneratedImageQuality(composedImage, qaInput, ai, qaModelName);
+          qaAttempts.push({
+            attempt: genAttempt,
+            stage: "final_composited",
+            passed: qaResult.passed,
+            reason: qaResult.reason,
+            at: new Date().toISOString(),
+          });
           if (!qaResult.passed) {
+            qaStatus = "final_warning";
+            qaWarning = qaResult.reason;
+            await persistQaProgress();
             logger.warn(
               `[processPageImage] QA FAILED for page ${pageIndex} (attempt ${genAttempt}) — ${qaResult.reason}`
             );
             if (genAttempt < MAX_GEN_ATTEMPTS) continue;
-            logger.warn(`[processPageImage] all QA attempts exhausted for page ${pageIndex}, saving last image`);
+            logger.warn(`[processPageImage] all QA attempts exhausted for page ${pageIndex}, saving last image with warning`);
           } else {
+            qaStatus = qaWarning ? "passed_with_warnings" : "passed";
+            await persistQaProgress();
             logger.info(`[processPageImage] QA PASSED for page ${pageIndex} on attempt ${genAttempt}`);
           }
+        } else if (qaStatus === "not_run") {
+          qaStatus = "not_required";
+          await persistQaProgress();
         }
 
-        finalImage = resized;
+        finalImage = composedImage;
         break;
       }
 
@@ -213,6 +322,10 @@ export const processPageImage = onTaskDispatched<PageImageTaskPayload>(
         image_url: pngUrl,
         jpeg_url: jpgUrl,
         status: "completed",
+        image_generation_qa_status: qaStatus,
+        image_generation_qa_warning: qaWarning,
+        image_generation_qa_attempts: qaAttempts.slice(-8),
+        image_generation_required_visual_elements: requiredVisualElements,
         image_generation_fail_count: 0,
         last_image_generation_error: "",
         updated_at: FieldValue.serverTimestamp(),
@@ -278,6 +391,8 @@ export const processPageImage = onTaskDispatched<PageImageTaskPayload>(
         const next = current + 1;
         tx.set(pageRef, {
           status: "failed",
+          image_generation_qa_status: "error",
+          image_generation_qa_warning: errorMessage,
           image_generation_fail_count: next,
           last_image_generation_error: errorMessage,
           updated_at: FieldValue.serverTimestamp(),

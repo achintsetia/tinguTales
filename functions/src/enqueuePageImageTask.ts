@@ -3,6 +3,7 @@ import {onDocumentCreated} from "firebase-functions/v2/firestore";
 import {getFunctions} from "firebase-admin/functions";
 import {db} from "./admin.js";
 import {PageImageTaskPayload} from "./_pageImageCore.js";
+import {normalizeBackCoverText} from "./_backCoverLessonText.js";
 
 export const enqueuePageImageTask = onDocumentCreated(
   {
@@ -29,6 +30,15 @@ export const enqueuePageImageTask = onDocumentCreated(
     const commonContextEntitiesJson = JSON.stringify(story.common_context_entities ?? []);
     const supportingCharactersJson = JSON.stringify(story.supporting_characters ?? []);
     const totalPages: number = story.page_count ?? 8;
+    const pageType = data.page_type as string;
+    const rawText = (data.text as string) ?? "";
+    const normalizedText = pageType === "back_cover" ?
+      normalizeBackCoverText(
+        rawText,
+        (story.child_name_english as string) || (story.child_name as string) || "",
+        String(story.moral ?? "")
+      ) :
+      rawText;
     const commonContextEntities: Array<{name?: string; category?: string}> =
       Array.isArray(story.common_context_entities) ? story.common_context_entities : [];
 
@@ -48,8 +58,8 @@ export const enqueuePageImageTask = onDocumentCreated(
       storyId,
       pageId,
       pageIndex: data.page as number,
-      pageType: data.page_type as string,
-      text: data.text as string,
+      pageType,
+      text: normalizedText,
       scenePrompt: data.scene_prompt as string,
       coverTitle: data.cover_title,
       coverSubtitle: data.cover_subtitle,
@@ -62,6 +72,9 @@ export const enqueuePageImageTask = onDocumentCreated(
     };
 
     try {
+      if (normalizedText !== rawText) {
+        await event.data?.ref.update({text: normalizedText});
+      }
       const queue = getFunctions().taskQueue("locations/asia-south1/functions/processPageImage");
       await queue.enqueue(payload, {
         dispatchDeadlineSeconds: 600,

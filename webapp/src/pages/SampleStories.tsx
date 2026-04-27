@@ -203,10 +203,7 @@ export default function SampleStories() {
                     Scroll inside the preview to read
                   </p>
                 </div>
-                <div
-                  className="h-[72vh] min-h-[520px] bg-[#F3E8FF]/35"
-                  onContextMenu={(event) => event.preventDefault()}
-                >
+                <div className="relative h-[72vh] min-h-[520px] bg-[#F3E8FF]/35">
                   <iframe
                     key={selectedStory.id}
                     src={getPdfEmbedUrl(selectedStory.pdfLink)}
@@ -214,6 +211,9 @@ export default function SampleStories() {
                     className="h-full w-full"
                     loading="lazy"
                     referrerPolicy="no-referrer"
+                  />
+                  <div
+                    className="absolute inset-0"
                     onContextMenu={(event) => event.preventDefault()}
                   />
                 </div>

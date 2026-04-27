@@ -206,7 +206,17 @@ export default function AdminPage() {
     setStoryPagesByStory((prev) => ({
       ...prev,
       [storyId]: (prev[storyId] ?? []).map((p) =>
-        p.id === pageId ? { ...p, status: "pending", image_url: null, jpeg_url: null } : p
+        p.id === pageId ? {
+          ...p,
+          status: "pending",
+          image_url: null,
+          jpeg_url: null,
+          image_generation_qa_status: "retry_queued",
+          image_generation_qa_warning: "",
+          image_generation_qa_attempts: [],
+          image_generation_required_visual_elements: [],
+          last_image_generation_error: "",
+        } : p
       ),
     }));
     try {
@@ -214,18 +224,16 @@ export default function AdminPage() {
       const retryFn = httpsCallable(fns, "adminRetryPageImage");
       await retryFn({ storyId, pageId });
       toast.success("Page re-queued for generation");
-      let firstEmit = true;
       const unsub = onSnapshot(doc(db, "stories", storyId, "pages", pageId), (snap) => {
-        if (firstEmit) { firstEmit = false; return; }
         if (!snap.exists()) return;
         const data = snap.data();
-        if (data.status === "completed" || data.image_url || data.jpeg_url) {
-          setStoryPagesByStory((prev) => ({
-            ...prev,
-            [storyId]: (prev[storyId] ?? []).map((p) =>
-              p.id === pageId ? { ...p, ...data, id: pageId } : p
-            ),
-          }));
+        setStoryPagesByStory((prev) => ({
+          ...prev,
+          [storyId]: (prev[storyId] ?? []).map((p) =>
+            p.id === pageId ? { ...p, ...data, id: pageId } : p
+          ),
+        }));
+        if (data.status === "completed" || data.status === "failed" || data.image_url || data.jpeg_url) {
           setRetryingStoryPageId(null);
           unsub();
         }
@@ -487,7 +495,17 @@ export default function AdminPage() {
     setRefundPagesByStory((prev) => ({
       ...prev,
       [storyId]: (prev[storyId] ?? []).map((p) =>
-        p.id === pageId ? { ...p, status: "pending", image_url: null, jpeg_url: null } : p
+        p.id === pageId ? {
+          ...p,
+          status: "pending",
+          image_url: null,
+          jpeg_url: null,
+          image_generation_qa_status: "retry_queued",
+          image_generation_qa_warning: "",
+          image_generation_qa_attempts: [],
+          image_generation_required_visual_elements: [],
+          last_image_generation_error: "",
+        } : p
       ),
     }));
     try {
@@ -495,19 +513,16 @@ export default function AdminPage() {
       const retryFn = httpsCallable(fns, "adminRetryPageImage");
       await retryFn({ storyId, pageId });
       toast.success("Page re-queued for generation");
-      // Listen for the page to complete — skip the first emission (current state)
-      let firstEmit = true;
       const unsub = onSnapshot(doc(db, "stories", storyId, "pages", pageId), (snap) => {
-        if (firstEmit) { firstEmit = false; return; }
         if (!snap.exists()) return;
         const data = snap.data();
-        if (data.status === "completed" || data.image_url || data.jpeg_url) {
-          setRefundPagesByStory((prev) => ({
-            ...prev,
-            [storyId]: (prev[storyId] ?? []).map((p) =>
-              p.id === pageId ? { ...p, ...data, id: pageId } : p
-            ),
-          }));
+        setRefundPagesByStory((prev) => ({
+          ...prev,
+          [storyId]: (prev[storyId] ?? []).map((p) =>
+            p.id === pageId ? { ...p, ...data, id: pageId } : p
+          ),
+        }));
+        if (data.status === "completed" || data.status === "failed" || data.image_url || data.jpeg_url) {
           setRetryingRefundPageId(null);
           unsub();
         }
@@ -841,6 +856,112 @@ export default function AdminPage() {
     processing: "bg-[#3730A3]/15 text-[#3730A3]",
     completed: "bg-[#2A9D8F]/15 text-[#2A9D8F]",
     failed: "bg-[#E76F51]/15 text-[#E76F51]",
+  };
+
+  const QA_STATUS_COLORS: Record<string, string> = {
+    retry_queued: "bg-[#FF9F1C]/15 text-[#FF9F1C]",
+    processing: "bg-[#3730A3]/15 text-[#3730A3]",
+    passed: "bg-[#2A9D8F]/15 text-[#2A9D8F]",
+    passed_with_warnings: "bg-[#FF9F1C]/15 text-[#FF9F1C]",
+    artwork_warning: "bg-[#FF9F1C]/15 text-[#FF9F1C]",
+    final_warning: "bg-[#FF9F1C]/15 text-[#FF9F1C]",
+    error: "bg-[#E76F51]/15 text-[#E76F51]",
+    not_required: "bg-[#1E1B4B]/10 text-[#1E1B4B]/50",
+    not_recorded: "bg-[#1E1B4B]/10 text-[#1E1B4B]/50",
+    not_run: "bg-[#1E1B4B]/10 text-[#1E1B4B]/50",
+  };
+
+  const QA_STATUS_LABELS: Record<string, string> = {
+    retry_queued: "Retry queued",
+    processing: "Processing",
+    passed: "QA passed",
+    passed_with_warnings: "Passed + warnings",
+    artwork_warning: "Art warning",
+    final_warning: "Final warning",
+    error: "QA/error failed",
+    not_required: "Not required",
+    not_recorded: "Not recorded",
+    not_run: "Not run",
+  };
+
+  const QA_STAGE_LABELS: Record<string, string> = {
+    artwork_pre_overlay: "Art",
+    final_composited: "Final",
+  };
+
+  const shorten = (value: string, max = 130) =>
+    value.length > max ? `${value.slice(0, max - 1)}…` : value;
+
+  const renderPageGenerationDetails = (page: any) => {
+    const rawQaStatus = String(page.image_generation_qa_status || "").trim();
+    const qaStatus = rawQaStatus || (page.last_image_generation_error ? "error" : "not_recorded");
+    const qaAttempts = Array.isArray(page.image_generation_qa_attempts) ? page.image_generation_qa_attempts : [];
+    const recentAttempts = qaAttempts.slice(-3);
+    const requiredElements = Array.isArray(page.image_generation_required_visual_elements) ?
+      page.image_generation_required_visual_elements.map((item: unknown) => String(item).trim()).filter(Boolean) :
+      [];
+    const qaWarning = String(page.image_generation_qa_warning || "").trim();
+    const lastError = String(page.last_image_generation_error || "").trim();
+    const retryAt = toDisplayDate(page.image_generation_retry_requested_at);
+    const retryBy = String(page.image_generation_retry_requested_by || "").trim();
+    const startedAt = toDisplayDate(page.image_generation_attempt_started_at);
+
+    return (
+      <div className="rounded-lg border border-[#F3E8FF] bg-white/80 p-2 text-[10px] leading-snug text-[#1E1B4B]/60 space-y-1">
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <span className="font-bold text-[#1E1B4B]/40 uppercase tracking-wide">Image QA</span>
+          <Badge className={`${QA_STATUS_COLORS[qaStatus] || QA_STATUS_COLORS.not_recorded} border-0 rounded-full px-1.5 py-0 text-[9px] font-semibold`}>
+            {QA_STATUS_LABELS[qaStatus] || qaStatus.replace(/_/g, " ")}
+          </Badge>
+        </div>
+
+        {retryAt && (
+          <p>
+            Retry: {retryAt}{retryBy ? ` by ${shorten(retryBy, 10)}` : ""}
+          </p>
+        )}
+        {!retryAt && startedAt && <p>Started: {startedAt}</p>}
+
+        {requiredElements.length > 0 && (
+          <p title={requiredElements.join(", ")}>
+            Needs: {shorten(requiredElements.join(", "), 95)}
+          </p>
+        )}
+
+        {qaWarning && (
+          <p className="text-[#B45309]" title={qaWarning}>
+            Warning: {shorten(qaWarning)}
+          </p>
+        )}
+        {!qaWarning && lastError && (
+          <p className="text-[#E76F51]" title={lastError}>
+            Error: {shorten(lastError)}
+          </p>
+        )}
+
+        {recentAttempts.length > 0 ? (
+          <div className="space-y-0.5">
+            {recentAttempts.map((attempt: any, index: number) => {
+              const passed = Boolean(attempt?.passed);
+              const stage = String(attempt?.stage || "").trim();
+              const reason = String(attempt?.reason || "").trim();
+              const attemptNo = attempt?.attempt ?? index + 1;
+              return (
+                <p key={`${stage || "qa"}-${attempt?.at || index}`} title={reason}>
+                  #{attemptNo} {QA_STAGE_LABELS[stage] || stage || "QA"}:
+                  <span className={passed ? " text-[#2A9D8F] font-semibold" : " text-[#E76F51] font-semibold"}>
+                    {passed ? " PASS" : " FAIL"}
+                  </span>
+                  {reason ? ` — ${shorten(reason, 90)}` : ""}
+                </p>
+              );
+            })}
+          </div>
+        ) : (
+          <p>No QA attempts recorded yet.</p>
+        )}
+      </div>
+    );
   };
 
   const STORY_STATUS_COLORS: Record<string, string> = {
@@ -1329,6 +1450,7 @@ export default function AdminPage() {
                                     <Badge className={`${PAGE_STATUS_COLORS[pageStatus] || "bg-[#1E1B4B]/10 text-[#1E1B4B]/50"} border-0 rounded-full px-2 py-0 text-[10px] font-semibold self-start`}>
                                       {pageStatus}
                                     </Badge>
+                                    {renderPageGenerationDetails(page)}
                                     <Button
                                       variant="outline"
                                       size="sm"
@@ -1544,6 +1666,7 @@ export default function AdminPage() {
                                     <Badge className={`${PAGE_STATUS_COLORS[pageStatus] || "bg-[#1E1B4B]/10 text-[#1E1B4B]/50"} border-0 rounded-full px-2 py-0 text-[10px] font-semibold self-start`}>
                                       {pageStatus}
                                     </Badge>
+                                    {renderPageGenerationDetails(page)}
 
                                     {/* Inline text editor */}
                                     {editingPageId === page.id ? (
@@ -1695,12 +1818,15 @@ export default function AdminPage() {
               <img
                 src={lightbox.url}
                 alt={lightbox.label}
-                className="max-h-[90vh] max-w-[90vw] object-contain rounded-2xl shadow-2xl block"
+                className={`max-h-[90vh] max-w-[90vw] object-contain shadow-2xl block ${
+                  lightbox.text ? "rounded-t-2xl" : "rounded-2xl"
+                }`}
+                style={{ maxHeight: lightbox.text ? "72vh" : "90vh" }}
               />
               {lightbox.text && (
-                <div className="absolute bottom-0 left-0 right-0 rounded-b-2xl bg-black/60 backdrop-blur-sm px-4 py-3">
+                <div className="rounded-b-2xl bg-black/75 px-4 py-3 max-h-[18vh] overflow-y-auto">
                   <p className="text-[11px] font-semibold text-white/50 uppercase tracking-wider mb-1">{lightbox.label}</p>
-                  <p className="text-sm text-white leading-relaxed whitespace-pre-wrap">{lightbox.text}</p>
+                  <p className="font-story text-base text-white leading-relaxed whitespace-pre-wrap">{lightbox.text}</p>
                 </div>
               )}
             </div>

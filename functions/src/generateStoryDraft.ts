@@ -5,6 +5,14 @@ import {GoogleGenAI} from "@google/genai";
 import {v4 as uuidv4} from "uuid";
 import {db} from "./admin.js";
 import {recordTokenConsumption} from "./tokenConsumption.js";
+import {
+  DEFAULT_GEMINI_TEXT_MODEL,
+  GEMINI_TEXT_TIMEOUT_MS,
+  GEMINI_MODEL_CONFIG_KEYS,
+  createGeminiClient,
+  getConfiguredGeminiModel,
+} from "./geminiConfig.js";
+import {buildBackCoverLessonSentence, normalizeBackCoverText} from "./_backCoverLessonText.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Age-appropriate writing level guidance  (mirrors story_planner.py)
@@ -185,6 +193,7 @@ async function normalizeInterests(
       }],
     }],
     config: {
+      responseMimeType: "application/json",
       systemInstruction:
         "You are an input understanding agent for a children's storybook platform. " +
         "Parse user interests into structured, normalized English themes suitable for story generation. " +
@@ -302,13 +311,14 @@ async function planStory(
     "  \"subtitleEnglish\": \"English translation of subtitle\",\n" +
     "  \"synopsis\": \"Brief 2-line synopsis in English\",\n" +
     `  "moral": "One concrete lesson ${childName} will take away (e.g. 'Sharing makes everyone happy')",\n` +
-    `  "lessonPhrase": "One short phrase (5-8 words) for the back cover, e.g. '${childName} learned that sharing is caring'",\n` +
+    `  "lessonPhrase": "One short back-cover sentence naming the exact lesson, e.g. '${childName} learned that sharing makes everyone happy'. Never write 'learned an important lesson today'.",\n` +
     `  "pages": [\n${pagesJson}\n  ]\n}`;
 
   const response = await ai.models.generateContent({
     model,
     contents: [{role: "user", parts: [{text: prompt}]}],
     config: {
+      responseMimeType: "application/json",
       systemInstruction:
         "You are a children's story planner specializing in Indian storytelling traditions. " +
         "Create engaging story outlines for children's picture books. " +
@@ -396,8 +406,11 @@ async function writeStory(
     "see their own world — their pet, their favourite thing — as the heart of the story." :
     "";
 
-  const lessonPhrase = outline.lessonPhrase ||
-    `${childName} learned something wonderful today!`;
+  const lessonPhrase = buildBackCoverLessonSentence(
+    childEnglishName,
+    String(outline.moral ?? ""),
+    outline.lessonPhrase
+  );
 
   const prompt =
     `Write a complete children's storybook natively in ${languageName}.\n\n` +
@@ -415,7 +428,7 @@ async function writeStory(
     "COVER, BACK COVER & BRANDING RULES:\n" +
     "- Page 0 (Front Cover): Show only the story title and the story subtitle on the cover.\n" +
     "  Do not add any other cover text, tagline, author name, badge, caption, quote, logo, or extra copy.\n" +
-    `- Page ${numPages - 1} (Back Cover): MUST be in English only. Start with "${lessonPhrase}". Then 1-2 warm sentences inviting the reader to try the lesson too. Include the exact name "${childEnglishName}" at least once.\n\n` +
+    `- Page ${numPages - 1} (Back Cover): MUST be in English only. Start exactly with "${lessonPhrase}". Then 1-2 warm sentences inviting the reader to try the lesson too. Do not write a generic phrase like "learned an important lesson today". Include the exact name "${childEnglishName}" at least once.\n\n` +
     "Story Outline:\n" +
     `Title: ${outline.title}\n` +
     `Synopsis: ${outline.synopsis}\n` +
@@ -430,6 +443,7 @@ async function writeStory(
     model,
     contents: [{role: "user", parts: [{text: prompt}]}],
     config: {
+      responseMimeType: "application/json",
       systemInstruction:
         `You are a master children's storyteller who writes natively in ${languageName}. ` +
         `You create stories DIRECTLY in ${languageName} — not translating from English. ` +
@@ -749,18 +763,17 @@ export const generateStoryDraft = onCall<GenerateStoryDraftRequest>(
     const childGender: string = (profile.gender as string) ?? "";
 
     // ── Read model name from Firestore ────────────────────────────────────
-    const modelDoc = await db.collection("models").doc("story_generation_model").get();
-    const modelDocData = modelDoc.data();
-    const modelName: string = (modelDoc.exists && modelDocData?.name) ?
-      modelDocData.name as string :
-      "gemini-2.5-flash";
-    logger.info(`[generateStoryDraft] using model=${modelName} for userId=${userId}`);
+    const modelName = await getConfiguredGeminiModel(
+      GEMINI_MODEL_CONFIG_KEYS.storyGeneration,
+      DEFAULT_GEMINI_TEXT_MODEL
+    );
+    logger.info(`[generateStoryDraft] using model=${modelName}, timeoutMs=${GEMINI_TEXT_TIMEOUT_MS} for userId=${userId}`);
 
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) throw new HttpsError("internal", "GEMINI_API_KEY is not configured.");
     const sarvamApiKey = process.env.SARVAM_API_KEY ?? "";
 
-    const ai = new GoogleGenAI({apiKey});
+    const ai = createGeminiClient(apiKey, GEMINI_TEXT_TIMEOUT_MS);
 
     // ── Reuse or create story document ───────────────────────────────────
     // If a previous attempt for the same user+profile+language failed, reuse
@@ -919,16 +932,14 @@ export const generateStoryDraft = onCall<GenerateStoryDraftRequest>(
       // Enforce back cover policy: English-only text with English child name.
       const backCoverPage = draftPages.find((p) => p.page === pageCount - 1);
       if (backCoverPage) {
-        const backText = String(backCoverPage.text ?? "").trim();
-        const hasNonAscii = Array.from(backText).some((ch) => ch.charCodeAt(0) > 127);
-        const hasEnglishName = childEnglishName ?
-          backText.toLowerCase().includes(childEnglishName.toLowerCase()) :
-          true;
-        if (hasNonAscii || !hasEnglishName) {
-          const safeMoral = String(outline.moral ?? "").trim() || "kindness makes every adventure brighter";
-          backCoverPage.text =
-            `${childEnglishName} learned an important lesson today: ${safeMoral}. ` +
-            "Try it in your own adventure too!";
+        const normalizedText = normalizeBackCoverText(
+          String(backCoverPage.text ?? ""),
+          childEnglishName,
+          String(outline.moral ?? ""),
+          outline.lessonPhrase
+        );
+        if (normalizedText !== String(backCoverPage.text ?? "").trim()) {
+          backCoverPage.text = normalizedText;
           logger.info(`[generateStoryDraft] [${storyId}] back cover normalized to English policy`);
         }
       }

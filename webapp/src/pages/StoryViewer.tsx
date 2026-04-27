@@ -357,8 +357,8 @@ export default function StoryViewer() {
                       src={zpSrc}
                       alt={zpLabel}
                       data-testid={`zoom-image-${zoomedPage}`}
-                      className="w-full rounded-3xl block"
-                      style={{ maxHeight: "85vh", objectFit: "contain" }}
+                      className={`w-full block ${zpText ? "rounded-t-3xl" : "rounded-3xl"}`}
+                      style={{ maxHeight: zpText ? "70vh" : "85vh", objectFit: "contain" }}
                     />
                   ) : (
                     <div className="w-full aspect-[3/4] bg-[#F3E8FF] rounded-3xl flex items-center justify-center">
@@ -366,11 +366,11 @@ export default function StoryViewer() {
                     </div>
                   )}
 
-                  {/* Page text overlay */}
+                  {/* Page text reference */}
                   {zpText && (
-                    <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-[#1E1B4B]/80 to-transparent p-6 pt-16 rounded-b-3xl">
-                      <p className="text-sm text-[#1E1B4B]/40 mb-1 font-medium">{zpLabel}</p>
-                      <p className="font-native text-white text-base sm:text-lg leading-relaxed">
+                    <div className="bg-[#1E1B4B] p-4 sm:p-5 rounded-b-3xl max-h-[18vh] overflow-y-auto">
+                      <p className="text-xs text-white/50 mb-1 font-medium uppercase tracking-wider">{zpLabel}</p>
+                      <p className="font-story text-white text-base sm:text-lg leading-relaxed">
                         {zpText}
                       </p>
                     </div>

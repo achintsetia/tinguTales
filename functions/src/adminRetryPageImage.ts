@@ -4,6 +4,7 @@ import {getFunctions} from "firebase-admin/functions";
 import {FieldValue} from "firebase-admin/firestore";
 import {db} from "./admin.js";
 import {assertAdmin} from "./_adminHelpers.js";
+import {normalizeBackCoverText} from "./_backCoverLessonText.js";
 
 interface RetryPageRequest {
   storyId: string;
@@ -32,27 +33,48 @@ export const adminRetryPageImage = onCall<RetryPageRequest>(
     const profileId: string = story.profile_id ?? "";
     const avatarUrl = `${userId}/${profileId}/avatar/avatar.jpg`;
     const characterCardJson = JSON.stringify(story.character_card ?? {});
+    const commonContextEntitiesJson = JSON.stringify(story.common_context_entities ?? []);
     const supportingCharactersJson = JSON.stringify(story.supporting_characters ?? []);
     const totalPages: number = story.page_count ?? 8;
+    const pageType = page.page_type as string;
+    const rawText = (page.text as string) ?? "";
+    const normalizedText = pageType === "back_cover" ?
+      normalizeBackCoverText(
+        rawText,
+        (story.child_name_english as string) || (story.child_name as string) || "",
+        String(story.moral ?? "")
+      ) :
+      rawText;
 
     const payload = {
       storyId,
       pageId,
       pageIndex: page.page as number,
-      pageType: page.page_type as string,
-      text: (page.text as string) ?? "",
+      pageType,
+      text: normalizedText,
       scenePrompt: (page.scene_prompt as string) ?? "",
       coverTitle: page.cover_title as string | undefined,
       coverSubtitle: page.cover_subtitle as string | undefined,
       userId,
       avatarUrl,
       characterCardJson,
+      commonContextEntitiesJson,
       supportingCharactersJson,
       totalPages,
     };
 
     await pageRef.update({
+      image_url: null,
+      jpeg_url: null,
+      text: normalizedText,
       status: "pending",
+      image_generation_qa_status: "retry_queued",
+      image_generation_qa_warning: "",
+      image_generation_qa_attempts: [],
+      image_generation_required_visual_elements: [],
+      image_generation_retry_requested_by: request.auth.uid,
+      image_generation_retry_requested_at: FieldValue.serverTimestamp(),
+      last_image_generation_error: "",
       updated_at: FieldValue.serverTimestamp(),
     });
 
