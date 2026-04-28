@@ -277,7 +277,7 @@ export default function LandingPage() {
               variant="ghost"
               className="hidden rounded-full px-4 font-semibold text-[#1E1B4B] hover:bg-[#1E1B4B]/5 md:inline-flex"
             >
-              <Link to="/faq">FAQ</Link>
+              <a href="/faq">FAQ</a>
             </Button>
             <Button
               type="button"
@@ -462,7 +462,7 @@ export default function LandingPage() {
         </div>
         <div className="mt-10 text-center">
           <Button asChild variant="outline" className="rounded-full border-[#1E1B4B]/15 px-6 font-semibold text-[#1E1B4B] hover:bg-[#1E1B4B]/5">
-            <Link to="/faq">View all FAQs</Link>
+            <a href="/faq">View all FAQs</a>
           </Button>
         </div>
       </section>
@@ -592,8 +592,8 @@ export default function LandingPage() {
             <span style={{ fontFamily: "Fredoka" }}>Tingu <span className="text-[#FF9F1C]">Tales</span></span>
           </div>
           <div className="flex items-center gap-4 text-xs">
-            <Link to="/terms" className="hover:text-[#3730A3] transition-colors">Terms &amp; Policies</Link>
-            <Link to="/faq" className="hover:text-[#3730A3] transition-colors">FAQ</Link>
+            <a href="/terms" className="hover:text-[#3730A3] transition-colors">Terms &amp; Policies</a>
+            <a href="/faq" className="hover:text-[#3730A3] transition-colors">FAQ</a>
           </div>
           <div className="text-right">
             <p>Made with love for little readers</p>

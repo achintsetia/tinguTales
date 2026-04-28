@@ -15,6 +15,9 @@ node_modules/
 
 # Build output (served via Firebase Hosting, not committed)
 webapp_public/
+# Static crawler-readable pages are committed directly
+!webapp_public/faq/
+!webapp_public/terms/
 
 # Vite cache
 webapp/.vite/

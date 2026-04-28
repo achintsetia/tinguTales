@@ -5,7 +5,6 @@ import { Toaster } from "sonner";
 import ProtectedRoute from "./components/ProtectedRoute";
 import LandingPage from "./pages/LandingPage";
 import SampleStories from "./pages/SampleStories";
-import FAQPage from "./pages/FAQPage";
 import Dashboard from "./pages/Dashboard";
 import CreateStory from "./pages/CreateStory";
 import StoryViewer from "./pages/StoryViewer";
@@ -13,15 +12,12 @@ import AdminPage from "./pages/AdminPage";
 import ModelConfigPage from "./pages/ModelConfigPage";
 import PricingConfigPage from "./pages/PricingConfigPage";
 import PaymentHistory from "./pages/PaymentHistory";
-import TermsPage from "./pages/TermsPage";
 
 function AppRouter() {
   return (
     <Routes>
       <Route path="/" element={<LandingPage />} />
       <Route path="/sample-stories" element={<SampleStories />} />
-      <Route path="/faq" element={<FAQPage />} />
-      <Route path="/terms" element={<TermsPage />} />
       <Route
         path="/dashboard"
         element={
