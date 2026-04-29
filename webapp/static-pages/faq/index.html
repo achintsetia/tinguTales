@@ -68,6 +68,22 @@
       },
       {
         "@type": "Question",
+        "name": "Who owns the storybook I create?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "You can freely use, print, and share your storybook for personal purposes. Tingu Tales owns the underlying technology and AI systems, but your generated storybook is yours to enjoy and share with family."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Will the story and images always be perfect?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Tingu Tales uses AI to generate stories and illustrations. While we aim for high quality, there may occasionally be small inconsistencies or visual imperfections. You can review your book before downloading and request fixes if needed."
+        }
+      },
+      {
+        "@type": "Question",
         "name": "Which languages are available?",
         "acceptedAnswer": {
           "@type": "Answer",
@@ -95,7 +111,7 @@
         "name": "When do I pay for the storybook?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "Payment is collected securely through Razorpay before illustration generation starts because image generation is the expensive part of creating your book. After payment, your illustrated pages are generated."
+          "text": "Payment is taken before illustration generation because creating personalised images involves real-time AI processing costs. This allows us to generate your full storybook immediately after."
         }
       },
       {
@@ -103,7 +119,15 @@
         "name": "Why is payment collected before image generation?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "The illustrated pages require paid AI image generation resources. Charging before illustration generation lets us create the full visual storybook while still giving you a review step after the pages are ready."
+          "text": "Payment is taken before illustration generation because creating personalised images involves real-time AI processing costs. This allows us to generate your full storybook immediately after."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "How long does it take to create my storybook?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Most storybooks are ready within 10\u201315 minutes after payment."
         }
       },
       {
@@ -111,7 +135,7 @@
         "name": "How does the refund process work?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "After the images are generated, you can review every page. If you notice AI image defects, submit a refund request from the review screen. Our team will review it and may correct or regenerate defective pages, resend an updated storybook link, or process an eligible refund."
+          "text": "After the images are generated, you can review every page. If you notice AI image defects, submit a refund request from the review screen. We will review your request and either fix the affected pages or issue a refund if the issue cannot be resolved."
         }
       },
       {
@@ -119,7 +143,7 @@
         "name": "Can pages be corrected instead of refunded?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "Yes. If defective pages are found, our team may correct or regenerate those pages and resend an updated storybook link so you can still receive the right book for your child."
+          "text": "Yes. We will fix the affected pages and send you an updated storybook link. If the issue cannot be resolved, we will issue a refund."
         }
       },
       {
@@ -127,7 +151,7 @@
         "name": "How does Tingu Tales protect child privacy?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "We take child privacy seriously. The uploaded child photo is deleted immediately after avatar creation, and we do not share your data with anyone."
+          "text": "Your child's data is never sold or used for advertising. Photos are only used to create the avatar and are deleted afterward — as soon as the avatar is generated, or within 30 days at most. Story data is used only to generate your book. We do not share your data with anyone."
         }
       },
       {
@@ -135,7 +159,7 @@
         "name": "Do you share my child's photo or story data?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "No. Child photos are used only for avatar creation and are deleted immediately after that step. Your data is not shared with third parties."
+          "text": "No. Child photos are used only for avatar creation. Your child's photo is deleted as soon as the avatar is generated. If not deleted immediately due to processing, it is automatically removed within 30 days. Your data is not shared with third parties."
         }
       },
       {
@@ -143,7 +167,7 @@
         "name": "Can I contact the team before creating a story?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "Yes. Use the Contact button on the homepage to send your question, and the Tingu Tales team will get back to you."
+          "text": "Yes. Use the Contact button on the homepage to send your question, and we will get back to you promptly."
         }
       }
     ]
@@ -381,6 +405,20 @@
           </button>
           <div class="faq-a">Yes. The stories are designed to be warm, age-appropriate, and easy for children to enjoy with parents.</div>
         </div>
+        <div class="faq-item">
+          <button class="faq-q" onclick="toggle(this)">
+            Who owns the storybook I create?
+            <svg class="chevron" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+          </button>
+          <div class="faq-a">You can freely use, print, and share your storybook for personal purposes. Tingu Tales owns the underlying technology and AI systems, but your generated storybook is yours to enjoy and share with family.</div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-q" onclick="toggle(this)">
+            Will the story and images always be perfect?
+            <svg class="chevron" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+          </button>
+          <div class="faq-a">Tingu Tales uses AI to generate stories and illustrations. While we aim for high quality, there may occasionally be small inconsistencies or visual imperfections. You can review your book before downloading and request fixes if needed.</div>
+        </div>
       </div>
     </div>
 
@@ -425,28 +463,35 @@
             When do I pay for the storybook?
             <svg class="chevron" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
           </button>
-          <div class="faq-a">Payment is collected securely through Razorpay before illustration generation starts because image generation is the expensive part of creating your book. After payment, your illustrated pages are generated.</div>
+          <div class="faq-a">Payment is taken before illustration generation because creating personalised images involves real-time AI processing costs. This allows us to generate your full storybook immediately after.</div>
         </div>
         <div class="faq-item">
           <button class="faq-q" onclick="toggle(this)">
             Why is payment collected before image generation?
             <svg class="chevron" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
           </button>
-          <div class="faq-a">The illustrated pages require paid AI image generation resources. Charging before illustration generation lets us create the full visual storybook while still giving you a review step after the pages are ready.</div>
+          <div class="faq-a">Payment is taken before illustration generation because creating personalised images involves real-time AI processing costs. This allows us to generate your full storybook immediately after.</div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-q" onclick="toggle(this)">
+            How long does it take to create my storybook?
+            <svg class="chevron" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+          </button>
+          <div class="faq-a">Most storybooks are ready within 10–15 minutes after payment.</div>
         </div>
         <div class="faq-item">
           <button class="faq-q" onclick="toggle(this)">
             How does the refund process work?
             <svg class="chevron" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
           </button>
-          <div class="faq-a">After the images are generated, you can review every page. If you notice AI image defects, submit a refund request from the review screen. Our team will review it and may correct or regenerate defective pages, resend an updated storybook link, or process an eligible refund.</div>
+          <div class="faq-a">After the images are generated, you can review every page. If you notice AI image defects, submit a refund request from the review screen. We will review your request and either fix the affected pages or issue a refund if the issue cannot be resolved.</div>
         </div>
         <div class="faq-item">
           <button class="faq-q" onclick="toggle(this)">
             Can pages be corrected instead of refunded?
             <svg class="chevron" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
           </button>
-          <div class="faq-a">Yes. If defective pages are found, our team may correct or regenerate those pages and resend an updated storybook link so you can still receive the right book for your child.</div>
+          <div class="faq-a">Yes. We will fix the affected pages and send you an updated storybook link. If the issue cannot be resolved, we will issue a refund.</div>
         </div>
       </div>
     </div>
@@ -462,21 +507,21 @@
             How does Tingu Tales protect child privacy?
             <svg class="chevron" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
           </button>
-          <div class="faq-a">We take child privacy seriously. The uploaded child photo is deleted immediately after avatar creation, and we do not share your data with anyone.</div>
+          <div class="faq-a">Your child's data is never sold or used for advertising. Photos are only used to create the avatar and are deleted afterward — as soon as the avatar is generated, or within 30 days at most. Story data is used only to generate your book. We do not share your data with anyone.</div>
         </div>
         <div class="faq-item">
           <button class="faq-q" onclick="toggle(this)">
             Do you share my child's photo or story data?
             <svg class="chevron" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
           </button>
-          <div class="faq-a">No. Child photos are used only for avatar creation and are deleted immediately after that step. Your data is not shared with third parties.</div>
+          <div class="faq-a">No. Child photos are used only for avatar creation. Your child's photo is deleted as soon as the avatar is generated. If not deleted immediately due to processing, it is automatically removed within 30 days. Your data is not shared with third parties.</div>
         </div>
         <div class="faq-item">
           <button class="faq-q" onclick="toggle(this)">
             Can I contact the team before creating a story?
             <svg class="chevron" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
           </button>
-          <div class="faq-a">Yes. Use the Contact button on the homepage to send your question, and the Tingu Tales team will get back to you.</div>
+          <div class="faq-a">Yes. Use the Contact button on the homepage to send your question, and we will get back to you promptly.</div>
         </div>
       </div>
     </div>
@@ -485,7 +530,7 @@
 
   <div class="cta-box">
     <p>Still have a question? We're happy to help.</p>
-    <a href="/" class="btn-cta">Go to Tingu Tales</a>
+    <a href="/" class="btn-cta">Create your child's story in 2 minutes</a>
   </div>
 </main>
 
