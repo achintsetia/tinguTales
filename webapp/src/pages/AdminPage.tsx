@@ -3,17 +3,26 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { db } from "../firebase";
 import { getFunctions, httpsCallable } from "firebase/functions";
-import { collection, getDocs, doc, getDoc, setDoc, deleteDoc, query, orderBy, where, onSnapshot } from "firebase/firestore";
+import {
+  collection, getDocs, doc, getDoc, setDoc, deleteDoc,
+  query, orderBy, onSnapshot,
+} from "firebase/firestore";
 import { toast } from "sonner";
 import { Button } from "../components/ui/button";
 import { Card, CardContent } from "../components/ui/card";
-import { Badge } from "../components/ui/badge";
-import { Switch } from "../components/ui/switch";
-import { Input } from "../components/ui/input";
-import {
-  ArrowLeft, Trash2, RefreshCw, DollarSign, Users, BookOpen,
-  Activity, Undo2, Bot, ChevronDown, ChevronUp, IndianRupee, User, Baby, Search, Mail, AlertCircle, X, ZoomIn, Pencil, Check
-} from "lucide-react";
+import { ArrowLeft, RefreshCw, Bot, IndianRupee, X } from "lucide-react";
+
+import { toDateValue } from "./admin/_adminUtils";
+import AdminOverviewTab from "./admin/AdminOverviewTab";
+import AdminUsersTab from "./admin/AdminUsersTab";
+import AdminStoriesTab from "./admin/AdminStoriesTab";
+import AdminFailedImagesTab from "./admin/AdminFailedImagesTab";
+import AdminRefundRequestsTab from "./admin/AdminRefundRequestsTab";
+import AdminContactsTab from "./admin/AdminContactsTab";
+import AdminWhitelistTab from "./admin/AdminWhitelistTab";
+import AdminCouponsTab from "./admin/AdminCouponsTab";
+import AdminPaymentsTab from "./admin/AdminPaymentsTab";
+import AdminCostsTab from "./admin/AdminCostsTab";
 
 const ADMIN_TAB_STORAGE_KEY = "admin_active_tab";
 const ADMIN_TAB_IDS = [
@@ -29,21 +38,36 @@ const ADMIN_TAB_IDS = [
   "costs",
 ] as const;
 
+const TABS = [
+  { id: "overview", label: "Overview" },
+  { id: "users", label: "Users" },
+  { id: "stories", label: "Stories" },
+  { id: "failed-image-generation", label: "Failed Image Generation" },
+  { id: "refund-requests", label: "Refund Requests" },
+  { id: "contacts", label: "Contacts" },
+  { id: "whitelist", label: "Whitelist" },
+  { id: "coupons", label: "Coupons" },
+  { id: "payments", label: "Payments" },
+  { id: "costs", label: "Costs" },
+];
+
 export default function AdminPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const [stats, setStats] = useState(null);
-  const [payments, setPayments] = useState([]);
+
+  const [stats, setStats] = useState<any>(null);
+  const [payments, setPayments] = useState<any[]>([]);
   const [stories, setStories] = useState<any[]>([]);
   const [userEmailById, setUserEmailById] = useState<Record<string, string>>({});
   const [tab, setTab] = useState("overview");
   const [loading, setLoading] = useState(true);
 
+  // Costs tab
   const [costReport, setCostReport] = useState<any>(null);
   const [loadingCosts, setLoadingCosts] = useState(false);
   const [expandedUser, setExpandedUser] = useState<string | null>(null);
 
-  // Whitelist tab state
+  // Whitelist tab
   const [allUsers, setAllUsers] = useState<any[]>([]);
   const [whitelistMap, setWhitelistMap] = useState<Record<string, any>>({});
   const [loadingWhitelist, setLoadingWhitelist] = useState(false);
@@ -52,28 +76,27 @@ export default function AdminPage() {
   const [whitelistEmail, setWhitelistEmail] = useState("");
   const [addingWhitelistEmail, setAddingWhitelistEmail] = useState(false);
 
-  // Users tab state
+  // Users tab
   const [userProfiles, setUserProfiles] = useState<any[]>([]);
   const [childProfilesByUser, setChildProfilesByUser] = useState<Record<string, any[]>>({});
   const [userSearch, setUserSearch] = useState("");
-  const [loadingUsers, setLoadingUsers] = useState(false);
 
-  // Stories tab state
+  // Stories tab
   const [expandedStoryId, setExpandedStoryId] = useState<string | null>(null);
   const [storyPagesByStory, setStoryPagesByStory] = useState<Record<string, any[]>>({});
   const [retryingStoryPageId, setRetryingStoryPageId] = useState<string | null>(null);
 
-  // Failed image generation tab state
+  // Failed image generation tab
   const [failedImageItems, setFailedImageItems] = useState<any[]>([]);
   const [loadingFailedImages, setLoadingFailedImages] = useState(false);
   const [retryingFailedDocId, setRetryingFailedDocId] = useState<string | null>(null);
 
-  // Contacts tab state
+  // Contacts tab
   const [contacts, setContacts] = useState<any[]>([]);
   const [loadingContacts, setLoadingContacts] = useState(false);
   const [deletingContactId, setDeletingContactId] = useState<string | null>(null);
 
-  // Refund requests tab state
+  // Refund requests tab
   const [refundRequests, setRefundRequests] = useState<any[]>([]);
   const [loadingRefunds, setLoadingRefunds] = useState(false);
   const [expandedRefundId, setExpandedRefundId] = useState<string | null>(null);
@@ -89,7 +112,7 @@ export default function AdminPage() {
   const [editingPageId, setEditingPageId] = useState<string | null>(null);
   const [savingPageTextId, setSavingPageTextId] = useState<string | null>(null);
 
-  // Coupons tab state
+  // Coupons tab
   const [coupons, setCoupons] = useState<any[]>([]);
   const [loadingCoupons, setLoadingCoupons] = useState(false);
   const [couponCodeInput, setCouponCodeInput] = useState("");
@@ -98,8 +121,9 @@ export default function AdminPage() {
   const [addingCoupon, setAddingCoupon] = useState(false);
   const [deletingCoupon, setDeletingCoupon] = useState<string | null>(null);
 
+  // ─── Auth guard ──────────────────────────────────────────────────────────────
+
   useEffect(() => {
-    // Wait until auth state is resolved to avoid redirecting admins during initial load.
     if (!user) return;
     if (!user.is_admin) {
       navigate("/dashboard", { replace: true });
@@ -108,17 +132,51 @@ export default function AdminPage() {
     fetchAll();
   }, [user?.id, user?.is_admin, navigate]);
 
+  // ─── Tab persistence ─────────────────────────────────────────────────────────
+
+  useEffect(() => {
+    if (!user?.is_admin) return;
+    const storageKey = `${ADMIN_TAB_STORAGE_KEY}:${user.id || "unknown"}`;
+    let savedTab = "overview";
+    try {
+      savedTab = localStorage.getItem(storageKey) || "overview";
+      if (!ADMIN_TAB_IDS.includes(savedTab as (typeof ADMIN_TAB_IDS)[number])) savedTab = "overview";
+      setTab(savedTab);
+    } catch {
+      setTab("overview");
+    }
+    if (savedTab === "costs" && !costReport) fetchCosts();
+    if (savedTab === "whitelist") fetchWhitelistData();
+    if (savedTab === "coupons") fetchCoupons();
+    if (savedTab === "failed-image-generation") fetchFailedImageGenerations();
+    if (savedTab === "contacts") fetchContacts();
+    if (savedTab === "refund-requests") fetchRefundRequests();
+  }, [user?.id, user?.is_admin]);
+
+  useEffect(() => {
+    if (!user?.is_admin) return;
+    const storageKey = `${ADMIN_TAB_STORAGE_KEY}:${user.id || "unknown"}`;
+    try {
+      localStorage.setItem(storageKey, tab);
+    } catch {
+      // Ignore storage write failures.
+    }
+  }, [tab, user?.id, user?.is_admin]);
+
+  // ─── Core data fetch ─────────────────────────────────────────────────────────
+
   const fetchAll = async () => {
     setLoading(true);
     try {
-      const [storiesRes, usersRes, paymentsRes, pricingRes, childProfilesRes, failedImageRes] = await Promise.allSettled([
-        getDocs(collection(db, "stories")),
-        getDocs(collection(db, "user_profile")),
-        getDocs(query(collection(db, "payments"), orderBy("created_at", "desc"))),
-        getDoc(doc(db, "pricing", "public")),
-        getDocs(collection(db, "child_profiles")),
-        getDocs(collection(db, "_failed_image_generation")),
-      ]);
+      const [storiesRes, usersRes, paymentsRes, pricingRes, childProfilesRes, failedImageRes] =
+        await Promise.allSettled([
+          getDocs(collection(db, "stories")),
+          getDocs(collection(db, "user_profile")),
+          getDocs(query(collection(db, "payments"), orderBy("created_at", "desc"))),
+          getDoc(doc(db, "pricing", "public")),
+          getDocs(collection(db, "child_profiles")),
+          getDocs(collection(db, "_failed_image_generation")),
+        ]);
 
       const storiesSnap = storiesRes.status === "fulfilled" ? storiesRes.value : null;
       const usersSnap = usersRes.status === "fulfilled" ? usersRes.value : null;
@@ -137,6 +195,7 @@ export default function AdminPage() {
       const totalRevenue = allPayments
         .filter((p) => p.status === "paid")
         .reduce((sum, p) => sum + (p.amount || 0), 0);
+
       setStats({
         total_users: usersSnap?.size ?? 0,
         total_stories: allStories.length,
@@ -148,11 +207,12 @@ export default function AdminPage() {
       setPayments(allPayments);
       setStories(storyRows);
       setUserEmailById(emailMap);
-      // Users tab data
+
       const sortedUsers = userRows.sort((a: any, b: any) =>
         (a.email || "").localeCompare(b.email || "")
       );
       setUserProfiles(sortedUsers);
+
       const cpMap: Record<string, any[]> = {};
       if (childProfilesSnap) {
         childProfilesSnap.docs.forEach((d) => {
@@ -164,13 +224,15 @@ export default function AdminPage() {
       }
       setChildProfilesByUser(cpMap);
 
-      const failedRows = failedImageSnap ? failedImageSnap.docs
-        .map((d) => ({id: d.id, ...d.data()}))
-        .sort((a: any, b: any) => {
-          const aTs = toDateValue(a.last_failed_at)?.getTime() ?? 0;
-          const bTs = toDateValue(b.last_failed_at)?.getTime() ?? 0;
-          return bTs - aTs;
-        }) : [];
+      const failedRows = failedImageSnap
+        ? failedImageSnap.docs
+            .map((d) => ({ id: d.id, ...d.data() }))
+            .sort((a: any, b: any) => {
+              const aTs = toDateValue(a.last_failed_at)?.getTime() ?? 0;
+              const bTs = toDateValue(b.last_failed_at)?.getTime() ?? 0;
+              return bTs - aTs;
+            })
+        : [];
       setFailedImageItems(failedRows);
 
       const hasAnyFailure =
@@ -183,19 +245,56 @@ export default function AdminPage() {
       if (hasAnyFailure) {
         toast.error("Some admin sections could not be loaded. Partial data shown.");
       }
-    } catch (e) {
+    } catch {
       toast.error("Failed to load admin data");
     } finally {
       setLoading(false);
     }
   };
 
+  // ─── Tab switcher ─────────────────────────────────────────────────────────────
+
+  const switchTab = (tabId: string) => {
+    setTab(tabId);
+    if (tabId === "costs" && !costReport) fetchCosts();
+    if (tabId === "whitelist") fetchWhitelistData();
+    if (tabId === "coupons") fetchCoupons();
+    if (tabId === "failed-image-generation") fetchFailedImageGenerations();
+    if (tabId === "contacts") fetchContacts();
+    if (tabId === "refund-requests") fetchRefundRequests();
+  };
+
+  // ─── Computed data ───────────────────────────────────────────────────────────
+
+  const visibleStories = stories
+    .filter((s: any) => {
+      const status = String(s.status || "");
+      return (
+        !!s.pdf_url ||
+        [
+          "draft_ready", "approved", "generating_scenes", "generating_images",
+          "creating_pdf", "scenes_failed", "failed", "completed",
+        ].includes(status)
+      );
+    })
+    .sort((a: any, b: any) => {
+      const aTs = toDateValue(a.created_at)?.getTime() ?? 0;
+      const bTs = toDateValue(b.created_at)?.getTime() ?? 0;
+      return bTs - aTs;
+    });
+
+  // ─── Stories handlers ────────────────────────────────────────────────────────
+
   const fetchStoryPages = async (storyId: string) => {
     if (storyPagesByStory[storyId]) return;
     try {
-      const snap = await getDocs(query(collection(db, "stories", storyId, "pages"), orderBy("page", "asc")));
-      const pages = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-      setStoryPagesByStory((prev) => ({ ...prev, [storyId]: pages }));
+      const snap = await getDocs(
+        query(collection(db, "stories", storyId, "pages"), orderBy("page", "asc"))
+      );
+      setStoryPagesByStory((prev) => ({
+        ...prev,
+        [storyId]: snap.docs.map((d) => ({ id: d.id, ...d.data() })),
+      }));
     } catch {
       toast.error("Failed to load story pages");
     }
@@ -206,23 +305,24 @@ export default function AdminPage() {
     setStoryPagesByStory((prev) => ({
       ...prev,
       [storyId]: (prev[storyId] ?? []).map((p) =>
-        p.id === pageId ? {
-          ...p,
-          status: "pending",
-          image_url: null,
-          jpeg_url: null,
-          image_generation_qa_status: "retry_queued",
-          image_generation_qa_warning: "",
-          image_generation_qa_attempts: [],
-          image_generation_required_visual_elements: [],
-          last_image_generation_error: "",
-        } : p
+        p.id === pageId
+          ? {
+              ...p,
+              status: "pending",
+              image_url: null,
+              jpeg_url: null,
+              image_generation_qa_status: "retry_queued",
+              image_generation_qa_warning: "",
+              image_generation_qa_attempts: [],
+              image_generation_required_visual_elements: [],
+              last_image_generation_error: "",
+            }
+          : p
       ),
     }));
     try {
       const fns = getFunctions(undefined, "asia-south1");
-      const retryFn = httpsCallable(fns, "adminRetryPageImage");
-      await retryFn({ storyId, pageId });
+      await httpsCallable(fns, "adminRetryPageImage")({ storyId, pageId });
       toast.success("Page re-queued for generation");
       const unsub = onSnapshot(doc(db, "stories", storyId, "pages", pageId), (snap) => {
         if (!snap.exists()) return;
@@ -244,18 +344,50 @@ export default function AdminPage() {
     }
   };
 
+  const handleStoryRegeneratePdf = async (storyId: string) => {
+    setRegeneratingPdfForStory(storyId);
+    try {
+      const fns = getFunctions(undefined, "asia-south1");
+      await httpsCallable(fns, "adminRetryPdf")({ storyId });
+      toast.success("PDF regeneration queued — refreshing when ready");
+      let attempts = 0;
+      const poll = async () => {
+        attempts++;
+        const storySnap = await getDoc(doc(db, "stories", storyId));
+        const pdfUrl: string = storySnap.data()?.pdf_url ?? "";
+        const prev = stories.find((s: any) => s.id === storyId)?.pdf_url ?? "";
+        if (pdfUrl && pdfUrl !== prev) {
+          setStories((prev) =>
+            prev.map((s: any) => (s.id === storyId ? { ...s, pdf_url: pdfUrl } : s))
+          );
+          toast.success("PDF is ready");
+        } else if (attempts < 24) {
+          setTimeout(poll, 5000);
+        }
+      };
+      setTimeout(poll, 5000);
+    } catch (e: any) {
+      toast.error(e?.message || "PDF regeneration failed");
+    } finally {
+      setRegeneratingPdfForStory(null);
+    }
+  };
+
+  // ─── Failed images handlers ──────────────────────────────────────────────────
+
   const fetchFailedImageGenerations = async () => {
     setLoadingFailedImages(true);
     try {
       const snap = await getDocs(collection(db, "_failed_image_generation"));
-      const rows = snap.docs
-        .map((d) => ({id: d.id, ...d.data()}))
-        .sort((a: any, b: any) => {
-          const aTs = toDateValue(a.last_failed_at)?.getTime() ?? 0;
-          const bTs = toDateValue(b.last_failed_at)?.getTime() ?? 0;
-          return bTs - aTs;
-        });
-      setFailedImageItems(rows);
+      setFailedImageItems(
+        snap.docs
+          .map((d) => ({ id: d.id, ...d.data() }))
+          .sort((a: any, b: any) => {
+            const aTs = toDateValue(a.last_failed_at)?.getTime() ?? 0;
+            const bTs = toDateValue(b.last_failed_at)?.getTime() ?? 0;
+            return bTs - aTs;
+          })
+      );
     } catch {
       toast.error("Failed to load failed image generation items");
     } finally {
@@ -267,8 +399,10 @@ export default function AdminPage() {
     setRetryingFailedDocId(failedDocId);
     try {
       const fns = getFunctions(undefined, "asia-south1");
-      const retryFn = httpsCallable<{failedDocId: string}, {status: string}>(fns, "adminRetryFailedImageGeneration");
-      await retryFn({failedDocId});
+      await httpsCallable<{ failedDocId: string }, { status: string }>(
+        fns,
+        "adminRetryFailedImageGeneration"
+      )({ failedDocId });
       toast.success("Failed image task re-queued");
       await fetchFailedImageGenerations();
     } catch (e: any) {
@@ -278,165 +412,18 @@ export default function AdminPage() {
     }
   };
 
-  const handleRefund = async (_paymentId) => {
+  // ─── Refund handlers ─────────────────────────────────────────────────────────
+
+  const handleRefund = async (_paymentId: string) => {
     toast.info("Refund processing is not available in this version.");
-  };
-
-  const fetchCosts = async () => {
-    setLoadingCosts(true);
-    try {
-      const fns = getFunctions(undefined, "asia-south1");
-      const getAdminCostReport = httpsCallable(fns, "getAdminCostReport");
-      const result: any = await getAdminCostReport({});
-      setCostReport(result.data);
-    } catch (e: any) {
-      toast.error(e?.message ?? "Failed to load cost report");
-    } finally {
-      setLoadingCosts(false);
-    }
-  };
-
-  const TABS = [
-    { id: "overview", label: "Overview" },
-    { id: "users", label: "Users" },
-    { id: "stories", label: "Stories" },
-    { id: "failed-image-generation", label: "Failed Image Generation" },
-    { id: "refund-requests", label: "Refund Requests" },
-    { id: "contacts", label: "Contacts" },
-    { id: "whitelist", label: "Whitelist" },
-    { id: "coupons", label: "Coupons" },
-    { id: "payments", label: "Payments" },
-    { id: "costs", label: "Costs" },
-  ];
-
-  const switchTab = (tabId: string) => {
-    setTab(tabId);
-    if (tabId === "costs" && !costReport) fetchCosts();
-    if (tabId === "whitelist") fetchWhitelistData();
-    if (tabId === "coupons") fetchCoupons();
-    if (tabId === "failed-image-generation") fetchFailedImageGenerations();
-    if (tabId === "contacts") fetchContacts();
-    if (tabId === "refund-requests") fetchRefundRequests();
-  };
-
-  useEffect(() => {
-    if (!user?.is_admin) return;
-    const storageKey = `${ADMIN_TAB_STORAGE_KEY}:${user.id || "unknown"}`;
-    let savedTab = "overview";
-    try {
-      savedTab = localStorage.getItem(storageKey) || "overview";
-      if (!ADMIN_TAB_IDS.includes(savedTab as typeof ADMIN_TAB_IDS[number])) savedTab = "overview";
-      setTab(savedTab);
-    } catch {
-      // Some browsers/privacy modes can block localStorage access.
-      setTab("overview");
-    }
-    // Trigger data fetch for the restored tab (same logic as handleTabChange)
-    if (savedTab === "costs" && !costReport) fetchCosts();
-    if (savedTab === "whitelist") fetchWhitelistData();
-    if (savedTab === "coupons") fetchCoupons();
-    if (savedTab === "failed-image-generation") fetchFailedImageGenerations();
-    if (savedTab === "contacts") fetchContacts();
-    if (savedTab === "refund-requests") fetchRefundRequests();
-  }, [user?.id, user?.is_admin]);
-
-  useEffect(() => {
-    if (!user?.is_admin) return;
-    const storageKey = `${ADMIN_TAB_STORAGE_KEY}:${user.id || "unknown"}`;
-    try {
-      localStorage.setItem(storageKey, tab);
-    } catch {
-      // Ignore storage write failures.
-    }
-  }, [tab, user?.id, user?.is_admin]);
-
-  const toDateValue = (raw: any): Date | null => {
-    if (!raw) return null;
-    if (raw instanceof Date) return Number.isNaN(raw.getTime()) ? null : raw;
-    if (typeof raw?.toDate === "function") {
-      const d = raw.toDate();
-      return d instanceof Date && !Number.isNaN(d.getTime()) ? d : null;
-    }
-    if (typeof raw === "number") {
-      const d = new Date(raw);
-      return Number.isNaN(d.getTime()) ? null : d;
-    }
-    if (typeof raw === "string") {
-      const d = new Date(raw);
-      return Number.isNaN(d.getTime()) ? null : d;
-    }
-    if (typeof raw === "object" && typeof raw.seconds === "number") {
-      const d = new Date(raw.seconds * 1000);
-      return Number.isNaN(d.getTime()) ? null : d;
-    }
-    return null;
-  };
-
-  const toDisplayDate = (raw: any) => {
-    const d = toDateValue(raw);
-    return d ? d.toLocaleString("en-IN", {dateStyle: "short", timeStyle: "short"}) : "";
-  };
-
-  const visibleStories = stories
-    .filter((s: any) => {
-      const status = String(s.status || "");
-      return (
-        !!s.pdf_url ||
-        [
-          "draft_ready",
-          "approved",
-          "generating_scenes",
-          "generating_images",
-          "creating_pdf",
-          "scenes_failed",
-          "failed",
-          "completed",
-        ].includes(status)
-      );
-    })
-    .sort((a: any, b: any) => {
-      const aTs = toDateValue(a.created_at)?.getTime() ?? 0;
-      const bTs = toDateValue(b.created_at)?.getTime() ?? 0;
-      return bTs - aTs;
-    });
-
-  const getStoryCoverThumbnail = (story: any) => {
-    if (story?.cover_image_url) return story.cover_image_url;
-    if (Array.isArray(story?.pages) && story.pages.length > 0) {
-      const coverPage = story.pages.find((p: any) => p?.page === 0) || story.pages[0];
-      return coverPage?.image_url || "";
-    }
-    return "";
-  };
-
-  const fetchCoupons = async () => {
-    setLoadingCoupons(true);
-    try {
-      const snap = await getDocs(query(collection(db, "discount_coupons"), orderBy("created_at", "desc")));
-      setCoupons(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
-    } catch {
-      toast.error("Failed to load coupons");
-    } finally {
-      setLoadingCoupons(false);
-    }
-  };
-
-  const fetchContacts = async () => {
-    setLoadingContacts(true);
-    try {
-      const snap = await getDocs(query(collection(db, "contacts"), orderBy("created_at", "desc")));
-      setContacts(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
-    } catch {
-      toast.error("Failed to load contact queries");
-    } finally {
-      setLoadingContacts(false);
-    }
   };
 
   const fetchRefundRequests = async () => {
     setLoadingRefunds(true);
     try {
-      const snap = await getDocs(query(collection(db, "refund_requests"), orderBy("created_at", "desc")));
+      const snap = await getDocs(
+        query(collection(db, "refund_requests"), orderBy("created_at", "desc"))
+      );
       setRefundRequests(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
     } catch {
       toast.error("Failed to load refund requests");
@@ -452,8 +439,10 @@ export default function AdminPage() {
         getDocs(query(collection(db, "stories", storyId, "pages"), orderBy("page", "asc"))),
         getDoc(doc(db, "stories", storyId)),
       ]);
-      const pages = pagesSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
-      setRefundPagesByStory((prev) => ({ ...prev, [storyId]: pages }));
+      setRefundPagesByStory((prev) => ({
+        ...prev,
+        [storyId]: pagesSnap.docs.map((d) => ({ id: d.id, ...d.data() })),
+      }));
       const pdfUrl: string = storySnap.data()?.pdf_url ?? "";
       if (pdfUrl) setRefundStoryPdfByStory((prev) => ({ ...prev, [storyId]: pdfUrl }));
     } catch {
@@ -461,57 +450,29 @@ export default function AdminPage() {
     }
   };
 
-  const handleStoryRegeneratePdf = async (storyId: string) => {
-    setRegeneratingPdfForStory(storyId);
-    try {
-      const fns = getFunctions(undefined, "asia-south1");
-      const retryFn = httpsCallable(fns, "adminRetryPdf");
-      await retryFn({ storyId });
-      toast.success("PDF regeneration queued — refreshing when ready");
-      let attempts = 0;
-      const poll = async () => {
-        attempts++;
-        const storySnap = await getDoc(doc(db, "stories", storyId));
-        const pdfUrl: string = storySnap.data()?.pdf_url ?? "";
-        const prev = stories.find((s: any) => s.id === storyId)?.pdf_url ?? "";
-        if (pdfUrl && pdfUrl !== prev) {
-          setStories((prev) => prev.map((s: any) => s.id === storyId ? { ...s, pdf_url: pdfUrl } : s));
-          toast.success("PDF is ready");
-        } else if (attempts < 24) {
-          setTimeout(poll, 5000);
-        }
-      };
-      setTimeout(poll, 5000);
-    } catch (e: any) {
-      toast.error(e?.message || "PDF regeneration failed");
-    } finally {
-      setRegeneratingPdfForStory(null);
-    }
-  };
-
   const handleRefundRetryPage = async (storyId: string, pageId: string) => {
     setRetryingRefundPageId(pageId);
-    // Optimistically mark just this page as regenerating so others stay visible
     setRefundPagesByStory((prev) => ({
       ...prev,
       [storyId]: (prev[storyId] ?? []).map((p) =>
-        p.id === pageId ? {
-          ...p,
-          status: "pending",
-          image_url: null,
-          jpeg_url: null,
-          image_generation_qa_status: "retry_queued",
-          image_generation_qa_warning: "",
-          image_generation_qa_attempts: [],
-          image_generation_required_visual_elements: [],
-          last_image_generation_error: "",
-        } : p
+        p.id === pageId
+          ? {
+              ...p,
+              status: "pending",
+              image_url: null,
+              jpeg_url: null,
+              image_generation_qa_status: "retry_queued",
+              image_generation_qa_warning: "",
+              image_generation_qa_attempts: [],
+              image_generation_required_visual_elements: [],
+              last_image_generation_error: "",
+            }
+          : p
       ),
     }));
     try {
       const fns = getFunctions(undefined, "asia-south1");
-      const retryFn = httpsCallable(fns, "adminRetryPageImage");
-      await retryFn({ storyId, pageId });
+      await httpsCallable(fns, "adminRetryPageImage")({ storyId, pageId });
       toast.success("Page re-queued for generation");
       const unsub = onSnapshot(doc(db, "stories", storyId, "pages", pageId), (snap) => {
         if (!snap.exists()) return;
@@ -537,10 +498,8 @@ export default function AdminPage() {
     setRegeneratingPdfForStory(storyId);
     try {
       const fns = getFunctions(undefined, "asia-south1");
-      const retryFn = httpsCallable(fns, "adminRetryPdf");
-      await retryFn({ storyId });
+      await httpsCallable(fns, "adminRetryPdf")({ storyId });
       toast.success("PDF regeneration queued — refresh the link once it's ready");
-      // Poll the story doc every 5 s until pdf_url updates (up to ~2 min)
       let attempts = 0;
       const poll = async () => {
         attempts++;
@@ -563,15 +522,19 @@ export default function AdminPage() {
   };
 
   const handleIssueRefund = async (refundRequestId: string) => {
-    if (!window.confirm("Issue a full Razorpay refund for this payment? This cannot be undone.")) return;
+    if (!window.confirm("Issue a full Razorpay refund for this payment? This cannot be undone."))
+      return;
     setIssuingRefund(refundRequestId);
     try {
       const fns = getFunctions(undefined, "asia-south1");
-      const issueFn = httpsCallable<{ refundRequestId: string }, { success: boolean; razorpayRefundId: unknown }>(fns, "adminIssueRefund");
-      const result = await issueFn({ refundRequestId });
+      const result = await httpsCallable<
+        { refundRequestId: string },
+        { success: boolean; razorpayRefundId: unknown }
+      >(fns, "adminIssueRefund")({ refundRequestId });
       toast.success(`Refund issued — Razorpay ID: ${result.data.razorpayRefundId}`);
-      // Update local state to reflect new status
-      setRefundRequests((prev) => prev.map((r) => r.id === refundRequestId ? { ...r, status: "refunded" } : r));
+      setRefundRequests((prev) =>
+        prev.map((r) => (r.id === refundRequestId ? { ...r, status: "refunded" } : r))
+      );
     } catch (e: any) {
       toast.error(e?.message || "Failed to issue refund");
     } finally {
@@ -584,10 +547,14 @@ export default function AdminPage() {
     setClosingRefundRequest(refundRequestId);
     try {
       const fns = getFunctions(undefined, "asia-south1");
-      const closeFn = httpsCallable<{ refundRequestId: string }, { success: boolean }>(fns, "adminCloseRefundRequest");
-      await closeFn({ refundRequestId });
+      await httpsCallable<{ refundRequestId: string }, { success: boolean }>(
+        fns,
+        "adminCloseRefundRequest"
+      )({ refundRequestId });
       toast.success("Refund request closed");
-      setRefundRequests((prev) => prev.map((r) => r.id === refundRequestId ? { ...r, status: "closed" } : r));
+      setRefundRequests((prev) =>
+        prev.map((r) => (r.id === refundRequestId ? { ...r, status: "closed" } : r))
+      );
     } catch (e: any) {
       toast.error(e?.message || "Failed to close refund request");
     } finally {
@@ -599,8 +566,10 @@ export default function AdminPage() {
     setSendingCorrectionEmail(storyId);
     try {
       const fns = getFunctions(undefined, "asia-south1");
-      const sendFn = httpsCallable<{ storyId: string }, { success: boolean; userEmail: string }>(fns, "adminSendCorrectionEmail");
-      const result = await sendFn({ storyId });
+      const result = await httpsCallable<
+        { storyId: string },
+        { success: boolean; userEmail: string }
+      >(fns, "adminSendCorrectionEmail")({ storyId });
       toast.success(`Correction email sent to ${result.data.userEmail}`);
     } catch (e: any) {
       toast.error(e?.message || "Failed to send correction email");
@@ -615,20 +584,27 @@ export default function AdminPage() {
     setSavingPageTextId(page.id);
     try {
       const fns = getFunctions(undefined, "asia-south1");
-      const updateFn = httpsCallable(fns, "adminUpdatePageText");
       const payload: Record<string, string> = { storyId, pageId: page.id, text: newText };
       if (page.page === 0) {
         const lines = newText.split("\n");
         payload.coverTitle = lines[0] ?? "";
         payload.coverSubtitle = lines.slice(1).join("\n");
       }
-      await updateFn(payload);
-      // Update local cache so the new text shows immediately
+      await httpsCallable(fns, "adminUpdatePageText")(payload);
       setRefundPagesByStory((prev) => ({
         ...prev,
         [storyId]: prev[storyId].map((p) =>
           p.id === page.id
-            ? { ...p, text: newText, ...(page.page === 0 ? { cover_title: newText.split("\n")[0] ?? "", cover_subtitle: newText.split("\n").slice(1).join("\n") } : {}) }
+            ? {
+                ...p,
+                text: newText,
+                ...(page.page === 0
+                  ? {
+                      cover_title: newText.split("\n")[0] ?? "",
+                      cover_subtitle: newText.split("\n").slice(1).join("\n"),
+                    }
+                  : {}),
+              }
             : p
         ),
       }));
@@ -638,6 +614,22 @@ export default function AdminPage() {
       toast.error(e?.message || "Failed to update page text");
     } finally {
       setSavingPageTextId(null);
+    }
+  };
+
+  // ─── Contacts handlers ───────────────────────────────────────────────────────
+
+  const fetchContacts = async () => {
+    setLoadingContacts(true);
+    try {
+      const snap = await getDocs(
+        query(collection(db, "contacts"), orderBy("created_at", "desc"))
+      );
+      setContacts(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+    } catch {
+      toast.error("Failed to load contact queries");
+    } finally {
+      setLoadingContacts(false);
     }
   };
 
@@ -651,6 +643,22 @@ export default function AdminPage() {
       toast.error("Failed to delete contact query");
     } finally {
       setDeletingContactId(null);
+    }
+  };
+
+  // ─── Coupons handlers ────────────────────────────────────────────────────────
+
+  const fetchCoupons = async () => {
+    setLoadingCoupons(true);
+    try {
+      const snap = await getDocs(
+        query(collection(db, "discount_coupons"), orderBy("created_at", "desc"))
+      );
+      setCoupons(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+    } catch {
+      toast.error("Failed to load coupons");
+    } finally {
+      setLoadingCoupons(false);
     }
   };
 
@@ -680,7 +688,6 @@ export default function AdminPage() {
         toast.error("Coupon code already exists");
         return;
       }
-
       await setDoc(couponRef, {
         code,
         active: true,
@@ -691,7 +698,6 @@ export default function AdminPage() {
         updated_at: new Date().toISOString(),
         created_by: user?.id || "",
       });
-
       setCouponCodeInput("");
       setCouponUsageInput("");
       setCouponDiscountInput("");
@@ -717,6 +723,8 @@ export default function AdminPage() {
     }
   };
 
+  // ─── Whitelist handlers ──────────────────────────────────────────────────────
+
   const fetchWhitelistData = async () => {
     setLoadingWhitelist(true);
     try {
@@ -724,23 +732,19 @@ export default function AdminPage() {
         getDocs(collection(db, "user_profile")),
         getDocs(collection(db, "beta_whitelist")),
       ]);
-
-      const users = usersSnap.docs
-        .map((d) => ({ id: d.id, ...d.data() }))
-        .sort((a: any, b: any) => {
-          const aName = (a.name ?? "").toLowerCase();
-          const bName = (b.name ?? "").toLowerCase();
-          return aName.localeCompare(bName);
-        });
-
+      setAllUsers(
+        usersSnap.docs
+          .map((d) => ({ id: d.id, ...d.data() }))
+          .sort((a: any, b: any) =>
+            (a.name ?? "").toLowerCase().localeCompare((b.name ?? "").toLowerCase())
+          )
+      );
       const map: Record<string, any> = {};
       whitelistSnap.docs.forEach((d) => {
         map[d.id] = d.data();
       });
-
-      setAllUsers(users);
       setWhitelistMap(map);
-    } catch (e) {
+    } catch {
       toast.error("Failed to load whitelist data");
     } finally {
       setLoadingWhitelist(false);
@@ -755,21 +759,27 @@ export default function AdminPage() {
       const emailLower = (u.email || "").trim().toLowerCase();
       const emailKey = emailLower ? `email:${emailLower}` : "";
       if (enabled) {
-        await setDoc(doc(db, "beta_whitelist", userId), {
-          user_id: userId,
-          email: u.email || "",
-          email_lower: emailLower,
-          name: u.name || "",
-          enabled: true,
-          added_at: new Date().toISOString(),
-          added_by: user?.id || "",
-        }, { merge: true });
+        await setDoc(
+          doc(db, "beta_whitelist", userId),
+          {
+            user_id: userId,
+            email: u.email || "",
+            email_lower: emailLower,
+            name: u.name || "",
+            enabled: true,
+            added_at: new Date().toISOString(),
+            added_by: user?.id || "",
+          },
+          { merge: true }
+        );
       } else {
-        const deletes: Promise<void>[] = [deleteDoc(doc(db, "beta_whitelist", userId)) as Promise<void>];
-        if (emailKey) deletes.push(deleteDoc(doc(db, "beta_whitelist", emailKey)) as Promise<void>);
+        const deletes: Promise<void>[] = [
+          deleteDoc(doc(db, "beta_whitelist", userId)) as Promise<void>,
+        ];
+        if (emailKey)
+          deletes.push(deleteDoc(doc(db, "beta_whitelist", emailKey)) as Promise<void>);
         await Promise.all(deletes);
       }
-
       setWhitelistMap((prev) => {
         if (enabled) {
           return {
@@ -789,48 +799,41 @@ export default function AdminPage() {
         if (emailKey) delete next[emailKey];
         return next;
       });
-
       toast.success(enabled ? "User whitelisted" : "User removed from whitelist");
-    } catch (e) {
+    } catch {
       toast.error("Failed to update whitelist");
     } finally {
       setSavingWhitelistUser(null);
     }
   };
 
-  const normalizeEmail = (email: string) => email.trim().toLowerCase();
-
   const handleAddWhitelistEmail = async () => {
-    const emailLower = normalizeEmail(whitelistEmail);
-    const isValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailLower);
-    if (!isValid) {
+    const emailLower = whitelistEmail.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailLower)) {
       toast.error("Enter a valid email");
       return;
     }
-
     const key = `email:${emailLower}`;
     setAddingWhitelistEmail(true);
     try {
-      await setDoc(doc(db, "beta_whitelist", key), {
-        email: emailLower,
-        email_lower: emailLower,
-        enabled: true,
-        added_at: new Date().toISOString(),
-        added_by: user?.id || "",
-      }, { merge: true });
-
-      setWhitelistMap((prev) => ({
-        ...prev,
-        [key]: {
-          ...(prev[key] ?? {}),
+      await setDoc(
+        doc(db, "beta_whitelist", key),
+        {
           email: emailLower,
           email_lower: emailLower,
           enabled: true,
+          added_at: new Date().toISOString(),
+          added_by: user?.id || "",
         },
+        { merge: true }
+      );
+      setWhitelistMap((prev) => ({
+        ...prev,
+        [key]: { ...(prev[key] ?? {}), email: emailLower, email_lower: emailLower, enabled: true },
       }));
       setWhitelistEmail("");
       toast.success("Email added to whitelist");
-    } catch (e) {
+    } catch {
       toast.error("Failed to add email");
     } finally {
       setAddingWhitelistEmail(false);
@@ -846,148 +849,35 @@ export default function AdminPage() {
         return next;
       });
       toast.success("Email removed from whitelist");
-    } catch (e) {
+    } catch {
       toast.error("Failed to remove email");
     }
   };
 
-  const PAGE_STATUS_COLORS: Record<string, string> = {
-    pending: "bg-[#FF9F1C]/15 text-[#FF9F1C]",
-    processing: "bg-[#3730A3]/15 text-[#3730A3]",
-    completed: "bg-[#2A9D8F]/15 text-[#2A9D8F]",
-    failed: "bg-[#E76F51]/15 text-[#E76F51]",
+  // ─── Costs handlers ──────────────────────────────────────────────────────────
+
+  const fetchCosts = async () => {
+    setLoadingCosts(true);
+    try {
+      const fns = getFunctions(undefined, "asia-south1");
+      const result: any = await httpsCallable(fns, "getAdminCostReport")({});
+      setCostReport(result.data);
+    } catch (e: any) {
+      toast.error(e?.message ?? "Failed to load cost report");
+    } finally {
+      setLoadingCosts(false);
+    }
   };
 
-  const QA_STATUS_COLORS: Record<string, string> = {
-    retry_queued: "bg-[#FF9F1C]/15 text-[#FF9F1C]",
-    processing: "bg-[#3730A3]/15 text-[#3730A3]",
-    passed: "bg-[#2A9D8F]/15 text-[#2A9D8F]",
-    passed_with_warnings: "bg-[#FF9F1C]/15 text-[#FF9F1C]",
-    artwork_warning: "bg-[#FF9F1C]/15 text-[#FF9F1C]",
-    final_warning: "bg-[#FF9F1C]/15 text-[#FF9F1C]",
-    error: "bg-[#E76F51]/15 text-[#E76F51]",
-    not_required: "bg-[#1E1B4B]/10 text-[#1E1B4B]/50",
-    not_recorded: "bg-[#1E1B4B]/10 text-[#1E1B4B]/50",
-    not_run: "bg-[#1E1B4B]/10 text-[#1E1B4B]/50",
-  };
+  // ─── Render ──────────────────────────────────────────────────────────────────
 
-  const QA_STATUS_LABELS: Record<string, string> = {
-    retry_queued: "Retry queued",
-    processing: "Processing",
-    passed: "QA passed",
-    passed_with_warnings: "Passed + warnings",
-    artwork_warning: "Art warning",
-    final_warning: "Final warning",
-    error: "QA/error failed",
-    not_required: "Not required",
-    not_recorded: "Not recorded",
-    not_run: "Not run",
-  };
-
-  const QA_STAGE_LABELS: Record<string, string> = {
-    artwork_pre_overlay: "Art",
-    final_composited: "Final",
-  };
-
-  const shorten = (value: string, max = 130) =>
-    value.length > max ? `${value.slice(0, max - 1)}…` : value;
-
-  const renderPageGenerationDetails = (page: any) => {
-    const rawQaStatus = String(page.image_generation_qa_status || "").trim();
-    const qaStatus = rawQaStatus || (page.last_image_generation_error ? "error" : "not_recorded");
-    const qaAttempts = Array.isArray(page.image_generation_qa_attempts) ? page.image_generation_qa_attempts : [];
-    const recentAttempts = qaAttempts.slice(-3);
-    const requiredElements = Array.isArray(page.image_generation_required_visual_elements) ?
-      page.image_generation_required_visual_elements.map((item: unknown) => String(item).trim()).filter(Boolean) :
-      [];
-    const qaWarning = String(page.image_generation_qa_warning || "").trim();
-    const lastError = String(page.last_image_generation_error || "").trim();
-    const retryAt = toDisplayDate(page.image_generation_retry_requested_at);
-    const retryBy = String(page.image_generation_retry_requested_by || "").trim();
-    const startedAt = toDisplayDate(page.image_generation_attempt_started_at);
-
+  if (loading) {
     return (
-      <div className="rounded-lg border border-[#F3E8FF] bg-white/80 p-2 text-[10px] leading-snug text-[#1E1B4B]/60 space-y-1">
-        <div className="flex items-center gap-1.5 flex-wrap">
-          <span className="font-bold text-[#1E1B4B]/40 uppercase tracking-wide">Image QA</span>
-          <Badge className={`${QA_STATUS_COLORS[qaStatus] || QA_STATUS_COLORS.not_recorded} border-0 rounded-full px-1.5 py-0 text-[9px] font-semibold`}>
-            {QA_STATUS_LABELS[qaStatus] || qaStatus.replace(/_/g, " ")}
-          </Badge>
-        </div>
-
-        {retryAt && (
-          <p>
-            Retry: {retryAt}{retryBy ? ` by ${shorten(retryBy, 10)}` : ""}
-          </p>
-        )}
-        {!retryAt && startedAt && <p>Started: {startedAt}</p>}
-
-        {requiredElements.length > 0 && (
-          <p title={requiredElements.join(", ")}>
-            Needs: {shorten(requiredElements.join(", "), 95)}
-          </p>
-        )}
-
-        {qaWarning && (
-          <p className="text-[#B45309]" title={qaWarning}>
-            Warning: {shorten(qaWarning)}
-          </p>
-        )}
-        {!qaWarning && lastError && (
-          <p className="text-[#E76F51]" title={lastError}>
-            Error: {shorten(lastError)}
-          </p>
-        )}
-
-        {recentAttempts.length > 0 ? (
-          <div className="space-y-0.5">
-            {recentAttempts.map((attempt: any, index: number) => {
-              const passed = Boolean(attempt?.passed);
-              const stage = String(attempt?.stage || "").trim();
-              const reason = String(attempt?.reason || "").trim();
-              const attemptNo = attempt?.attempt ?? index + 1;
-              return (
-                <p key={`${stage || "qa"}-${attempt?.at || index}`} title={reason}>
-                  #{attemptNo} {QA_STAGE_LABELS[stage] || stage || "QA"}:
-                  <span className={passed ? " text-[#2A9D8F] font-semibold" : " text-[#E76F51] font-semibold"}>
-                    {passed ? " PASS" : " FAIL"}
-                  </span>
-                  {reason ? ` — ${shorten(reason, 90)}` : ""}
-                </p>
-              );
-            })}
-          </div>
-        ) : (
-          <p>No QA attempts recorded yet.</p>
-        )}
+      <div className="min-h-screen bg-[#FDFBF7] flex items-center justify-center">
+        <RefreshCw className="w-6 h-6 animate-spin text-[#3730A3]" strokeWidth={2} />
       </div>
     );
-  };
-
-  const STORY_STATUS_COLORS: Record<string, string> = {
-    draft_ready: "bg-[#FF9F1C]/15 text-[#FF9F1C]",
-    approved: "bg-[#3730A3]/15 text-[#3730A3]",
-    generating_scenes: "bg-[#FF9F1C]/15 text-[#FF9F1C]",
-    generating_images: "bg-[#FF9F1C]/15 text-[#FF9F1C]",
-    creating_pdf: "bg-[#FF9F1C]/15 text-[#FF9F1C]",
-    completed: "bg-[#2A9D8F]/15 text-[#2A9D8F]",
-    scenes_failed: "bg-[#E76F51]/15 text-[#E76F51]",
-    failed: "bg-[#E76F51]/15 text-[#E76F51]",
-  };
-
-  const JOB_STATUS_COLORS = {
-    pending: "bg-[#FF9F1C]/15 text-[#FF9F1C]",
-    processing: "bg-[#3730A3]/15 text-[#3730A3]",
-    done: "bg-[#2A9D8F]/15 text-[#2A9D8F]",
-    failed: "bg-[#E76F51]/15 text-[#E76F51]",
-  };
-
-  const PAY_STATUS_COLORS = {
-    created: "bg-[#FF9F1C]/15 text-[#FF9F1C]",
-    paid: "bg-[#2A9D8F]/15 text-[#2A9D8F]",
-    failed: "bg-[#E76F51]/15 text-[#E76F51]",
-    refunded: "bg-[#3730A3]/15 text-[#3730A3]",
-  };
+  }
 
   return (
     <div className="min-h-screen bg-[#FDFBF7]">
@@ -995,14 +885,22 @@ export default function AdminPage() {
       <nav className="sticky top-0 z-50 backdrop-blur-xl bg-[#FDFBF7]/80 border-b border-[#F3E8FF]">
         <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <button onClick={() => navigate("/dashboard")} className="text-[#1E1B4B]/60 hover:text-[#1E1B4B]">
+            <button
+              onClick={() => navigate("/dashboard")}
+              className="text-[#1E1B4B]/60 hover:text-[#1E1B4B]"
+            >
               <ArrowLeft className="w-5 h-5" strokeWidth={2.5} />
             </button>
             <h1 className="text-xl font-semibold text-[#1E1B4B]" style={{ fontFamily: "Fredoka" }}>
               Admin Panel
             </h1>
           </div>
-          <Button variant="outline" onClick={fetchAll} className="rounded-full border-[#F3E8FF]" data-testid="btn-admin-refresh">
+          <Button
+            variant="outline"
+            onClick={fetchAll}
+            className="rounded-full border-[#F3E8FF]"
+            data-testid="btn-admin-refresh"
+          >
             <RefreshCw className="w-4 h-4 mr-2" strokeWidth={2} />
             Refresh
           </Button>
@@ -1057,1113 +955,179 @@ export default function AdminPage() {
             </Card>
           </aside>
 
-          {/* Content */}
+          {/* Tab content */}
           <div>
+            {tab === "overview" && stats && <AdminOverviewTab stats={stats} />}
 
-        {/* Overview Tab */}
-        {tab === "overview" && stats && (
-          <>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8" data-testid="admin-stats">
-            {[
-              { label: "Users", value: stats.total_users, icon: Users, color: "#3730A3" },
-              { label: "Stories", value: `${stats.completed_stories}/${stats.total_stories}`, icon: BookOpen, color: "#2A9D8F" },
-              { label: "Revenue", value: `₹${stats.total_revenue}`, icon: DollarSign, color: "#FF9F1C" },
-              { label: "Queue", value: `${stats.pending_jobs}P / ${stats.processing_jobs}R`, icon: Activity, color: "#E76F51" },
-            ].map((s) => (
-              <Card key={s.label} className="rounded-2xl border-2 border-[#F3E8FF]">
-                <CardContent className="p-5">
-                  <div className="flex items-center gap-2 mb-2">
-                    <s.icon className="w-4 h-4" style={{ color: s.color }} strokeWidth={2.5} />
-                    <span className="text-xs font-bold text-[#1E1B4B]/40 uppercase tracking-wider">{s.label}</span>
-                  </div>
-                  <p className="text-2xl font-bold text-[#1E1B4B]" style={{ fontFamily: "Fredoka" }}>{s.value}</p>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-
-        </>
-        )}
-
-        {/* Users Tab */}
-        {tab === "users" && (
-          <div>
-            {/* Search */}
-            <div className="relative mb-4">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#1E1B4B]/30" strokeWidth={2} />
-              <input
-                type="text"
-                value={userSearch}
-                onChange={(e) => setUserSearch(e.target.value)}
-                placeholder="Search by name or email…"
-                className="w-full pl-9 pr-4 py-2.5 rounded-xl border-2 border-[#F3E8FF] text-sm text-[#1E1B4B] placeholder:text-[#1E1B4B]/30 focus:outline-none focus:border-[#3730A3]/30 bg-white"
+            {tab === "users" && (
+              <AdminUsersTab
+                userProfiles={userProfiles}
+                childProfilesByUser={childProfilesByUser}
+                userSearch={userSearch}
+                setUserSearch={setUserSearch}
+                stories={stories}
+                expandedUser={expandedUser}
+                setExpandedUser={setExpandedUser}
               />
-            </div>
-            <div className="space-y-3">
-              {userProfiles
-                .filter((u: any) => {
-                  const q = userSearch.toLowerCase();
-                  return !q ||
-                    (u.email || "").toLowerCase().includes(q) ||
-                    (u.name || "").toLowerCase().includes(q);
-                })
-                .map((u: any) => {
-                  const uid = u.uid || u.id;
-                  const children = childProfilesByUser[uid] || [];
-                  const storyCount = stories.filter((s: any) => s.user_id === uid).length;
-                  const isExpanded = expandedUser === uid;
-                  return (
-                    <div key={uid} className="rounded-2xl border-2 border-[#F3E8FF] bg-white overflow-hidden">
-                      <button
-                        className="w-full flex items-center gap-4 p-4 text-left hover:bg-[#F3E8FF]/30 transition-colors"
-                        onClick={() => setExpandedUser(isExpanded ? null : uid)}
-                      >
-                        <div className="w-10 h-10 rounded-xl bg-[#3730A3]/10 flex items-center justify-center flex-shrink-0">
-                          <User className="w-5 h-5 text-[#3730A3]/60" strokeWidth={2} />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-semibold text-[#1E1B4B] truncate" style={{ fontFamily: "Fredoka" }}>
-                            {u.name || "(no name)"}
-                          </p>
-                          <p className="text-xs text-[#1E1B4B]/50 truncate">{u.email || "—"}</p>
-                        </div>
-                        <div className="flex items-center gap-3 flex-shrink-0 text-right">
-                          <div className="text-xs text-[#1E1B4B]/40">
-                            <span className="font-semibold text-[#1E1B4B]/60">{storyCount}</span> stories
-                          </div>
-                          <div className="text-xs text-[#1E1B4B]/40">
-                            <span className="font-semibold text-[#1E1B4B]/60">{children.length}</span> profiles
-                          </div>
-                          {isExpanded ? (
-                            <ChevronUp className="w-4 h-4 text-[#1E1B4B]/30" strokeWidth={2} />
-                          ) : (
-                            <ChevronDown className="w-4 h-4 text-[#1E1B4B]/30" strokeWidth={2} />
-                          )}
-                        </div>
-                      </button>
-                      {isExpanded && (
-                        <div className="border-t-2 border-[#F3E8FF] px-4 py-3 space-y-2 bg-[#F3E8FF]/20">
-                          <p className="text-[10px] font-semibold text-[#1E1B4B]/40 uppercase tracking-wider mb-1">Child Profiles</p>
-                          {children.length === 0 ? (
-                            <p className="text-xs text-[#1E1B4B]/40 italic">No child profiles</p>
-                          ) : (
-                            children.map((cp: any) => (
-                              <div key={cp.id} className="flex items-center gap-3 p-2 rounded-xl bg-white border border-[#F3E8FF]">
-                                {cp.avatar_url ? (
-                                  <img src={cp.avatar_url} alt={cp.name} className="w-8 h-8 rounded-lg object-cover flex-shrink-0" />
-                                ) : (
-                                  <div className="w-8 h-8 rounded-lg bg-[#FF9F1C]/10 flex items-center justify-center flex-shrink-0">
-                                    <Baby className="w-4 h-4 text-[#FF9F1C]" strokeWidth={2} />
-                                  </div>
-                                )}
-                                <div className="flex-1 min-w-0">
-                                  <p className="text-xs font-semibold text-[#1E1B4B] truncate">{cp.name}</p>
-                                  <p className="text-[10px] text-[#1E1B4B]/40">
-                                    Age {cp.age}{cp.gender ? ` · ${cp.gender}` : ""}
-                                  </p>
-                                </div>
-                              </div>
-                            ))
-                          )}
-                          <p className="text-[10px] font-semibold text-[#1E1B4B]/40 uppercase tracking-wider mt-2 mb-1">User ID</p>
-                          <p className="text-[10px] font-mono text-[#1E1B4B]/40 break-all">{uid}</p>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              {userProfiles.length === 0 && (
-                <div className="text-center py-16">
-                  <Users className="w-12 h-12 text-[#F3E8FF] mx-auto mb-4" strokeWidth={1.5} />
-                  <p className="text-sm text-[#1E1B4B]/50">No users found</p>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Tasks Tab */}
-        {tab === "whitelist" && (
-          <div data-testid="admin-whitelist">
-            <Card className="rounded-2xl border-2 border-[#F3E8FF] mb-4">
-              <CardContent className="p-4">
-                <p className="text-sm font-semibold text-[#1E1B4B] mb-2" style={{ fontFamily: "Fredoka" }}>
-                  Add Email To Whitelist
-                </p>
-                <div className="flex items-center gap-2">
-                  <Input
-                    value={whitelistEmail}
-                    onChange={(e) => setWhitelistEmail(e.target.value)}
-                    placeholder="name@example.com"
-                    className="rounded-full border-[#F3E8FF]"
-                  />
-                  <Button
-                    onClick={handleAddWhitelistEmail}
-                    disabled={addingWhitelistEmail}
-                    className="rounded-full bg-[#2A9D8F] hover:bg-[#248679] text-white"
-                  >
-                    {addingWhitelistEmail ? "Adding…" : "Add"}
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
-              <div>
-                <p className="text-sm text-[#1E1B4B]/50">
-                  Beta users who can create child profiles and stories
-                </p>
-                <p className="text-xs text-[#1E1B4B]/40 mt-0.5">
-                  Whitelisted: {Object.keys(whitelistMap).length} / {allUsers.length}
-                </p>
-              </div>
-              <div className="flex items-center gap-2">
-                <Input
-                  value={whitelistSearch}
-                  onChange={(e) => setWhitelistSearch(e.target.value)}
-                  placeholder="Search name or email"
-                  className="w-[220px] rounded-full border-[#F3E8FF]"
-                />
-                <Button
-                  variant="outline"
-                  onClick={fetchWhitelistData}
-                  disabled={loadingWhitelist}
-                  className="rounded-full border-[#F3E8FF]"
-                >
-                  <RefreshCw className={`w-4 h-4 mr-2 ${loadingWhitelist ? "animate-spin" : ""}`} strokeWidth={2} />
-                  Refresh
-                </Button>
-              </div>
-            </div>
-
-            {loadingWhitelist && (
-              <div className="flex items-center justify-center py-12 text-[#1E1B4B]/40">
-                <RefreshCw className="w-5 h-5 animate-spin mr-2" />
-                Loading whitelist…
-              </div>
             )}
 
-            {!loadingWhitelist && (
-              <div className="space-y-2">
-                {allUsers
-                  .filter((u: any) => {
-                    const needle = whitelistSearch.trim().toLowerCase();
-                    if (!needle) return true;
-                    return (`${u.name || ""} ${u.email || ""}`).toLowerCase().includes(needle);
-                  })
-                  .map((u: any) => {
-                    const uid = u.uid || u.id;
-                    const emailKey = u.email ? `email:${String(u.email).trim().toLowerCase()}` : "";
-                    const isAdminUser = u.is_admin === true;
-                    const isWhitelisted = isAdminUser || !!whitelistMap[uid] || (!!emailKey && !!whitelistMap[emailKey]);
-                    return (
-                      <Card key={uid} className="rounded-2xl border-2 border-[#F3E8FF]">
-                        <CardContent className="p-4 flex items-center gap-3">
-                          <div className="w-9 h-9 rounded-full bg-[#F3E8FF] flex items-center justify-center text-xs font-bold text-[#3730A3]">
-                            {(u.name?.[0] || u.email?.[0] || "?").toUpperCase()}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-semibold text-[#1E1B4B] truncate">{u.name || "Unnamed user"}</p>
-                            <p className="text-xs text-[#1E1B4B]/40 truncate">{u.email || uid}</p>
-                          </div>
-                          {isAdminUser && (
-                            <Badge className="bg-[#3730A3]/15 text-[#3730A3] border-0 rounded-full px-2.5 py-0.5 text-xs font-semibold">
-                              Admin
-                            </Badge>
-                          )}
-                          {!isAdminUser && isWhitelisted && (
-                            <Badge className="bg-[#2A9D8F]/15 text-[#2A9D8F] border-0 rounded-full px-2.5 py-0.5 text-xs font-semibold">
-                              Whitelisted
-                            </Badge>
-                          )}
-                          {!isAdminUser && !isWhitelisted && (
-                            <Badge className="bg-[#E76F51]/15 text-[#E76F51] border-0 rounded-full px-2.5 py-0.5 text-xs font-semibold">
-                              Blocked
-                            </Badge>
-                          )}
-                          <Switch
-                            checked={isWhitelisted}
-                            disabled={isAdminUser || savingWhitelistUser === uid}
-                            onCheckedChange={(checked) => handleToggleWhitelist(u, checked)}
-                          />
-                        </CardContent>
-                      </Card>
-                    );
-                  })}
-
-                {Object.entries(whitelistMap)
-                  .filter(([key]) => key.startsWith("email:"))
-                  .map(([key, val]: any) => (
-                    <Card key={key} className="rounded-2xl border-2 border-[#F3E8FF] bg-[#FDFBF7]">
-                      <CardContent className="p-4 flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-full bg-[#2A9D8F]/10 flex items-center justify-center text-xs font-bold text-[#2A9D8F]">
-                          @
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-semibold text-[#1E1B4B] truncate">{val.email || key.replace("email:", "")}</p>
-                          <p className="text-xs text-[#1E1B4B]/40 truncate">Manual email whitelist</p>
-                        </div>
-                        <Badge className="bg-[#2A9D8F]/15 text-[#2A9D8F] border-0 rounded-full px-2.5 py-0.5 text-xs font-semibold">
-                          Whitelisted
-                        </Badge>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleRemoveWhitelistEmail(key)}
-                          className="rounded-full text-[#E76F51] hover:bg-[#E76F51]/10"
-                        >
-                          <Trash2 className="w-4 h-4" strokeWidth={2} />
-                        </Button>
-                      </CardContent>
-                    </Card>
-                  ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Stories Tab */}
-        {tab === "stories" && (
-          <div data-testid="admin-stories">
-            <p className="text-sm text-[#1E1B4B]/50 mb-4">{visibleStories.length} story(s) including in-progress</p>
-            <div className="space-y-2">
-              {visibleStories.length === 0 ? (
-                <p className="text-center py-12 text-[#1E1B4B]/40">No stories found in progress or completed states</p>
-              ) : (
-                visibleStories.map((s: any) => {
-                  const isExpanded = expandedStoryId === s.id;
-                  const pages = storyPagesByStory[s.id] || [];
-                  return (
-                    <div key={s.id} className="rounded-xl bg-white border-2 border-[#F3E8FF] overflow-hidden">
-                      {/* Header row */}
-                      <button
-                        className="w-full flex items-center gap-3 p-4 text-left hover:bg-[#FFF8F0] transition-colors"
-                        onClick={async () => {
-                          const next = isExpanded ? null : s.id;
-                          setExpandedStoryId(next);
-                          if (next) await fetchStoryPages(next);
-                        }}
-                      >
-                        <div className="w-14 rounded-lg overflow-hidden bg-gradient-to-br from-[#3730A3]/10 to-[#FF9F1C]/10 flex-shrink-0 aspect-[3/4]">
-                          {getStoryCoverThumbnail(s) ? (
-                            <img
-                              src={getStoryCoverThumbnail(s)}
-                              alt={s.title || "Story cover"}
-                              className="w-full h-full object-cover"
-                            />
-                          ) : (
-                            <div className="w-full h-full flex items-center justify-center">
-                              <BookOpen className="w-5 h-5 text-[#1E1B4B]/25" strokeWidth={2} />
-                            </div>
-                          )}
-                        </div>
-                        <Badge className={`${STORY_STATUS_COLORS[s.status] || "bg-[#2A9D8F]/15 text-[#2A9D8F]"} rounded-full px-2.5 py-0.5 text-xs font-semibold border-0 flex-shrink-0`}>
-                          {s.status || "completed"}
-                        </Badge>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-[#1E1B4B] truncate">{s.title || "Untitled Story"}</p>
-                          <p className="text-xs text-[#1E1B4B]/50 truncate">
-                            {userEmailById[s.user_id] || s.user_email || "Unknown user"}
-                          </p>
-                          <p className="text-xs text-[#1E1B4B]/40 font-mono truncate">{s.id}</p>
-                          <p className="text-xs text-[#1E1B4B]/40">
-                            {toDisplayDate(s.created_at)}
-                          </p>
-                        </div>
-                        <div className="flex flex-col items-end gap-2 flex-shrink-0">
-                          {s.pdf_url ? (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={(e) => { e.stopPropagation(); window.open(s.pdf_url, "_blank"); }}
-                              className="rounded-full border-[#3730A3]/30 text-[#3730A3] hover:bg-[#3730A3]/10 text-xs"
-                            >
-                              Open PDF
-                            </Button>
-                          ) : (
-                            <span className="text-xs text-[#1E1B4B]/35">PDF not ready</span>
-                          )}
-                          {isExpanded
-                            ? <ChevronUp className="w-4 h-4 text-[#1E1B4B]/30" />
-                            : <ChevronDown className="w-4 h-4 text-[#1E1B4B]/30" />}
-                        </div>
-                      </button>
-
-                      {/* Expanded: pages grid */}
-                      {isExpanded && (
-                        <div className="border-t-2 border-[#F3E8FF] px-4 pt-4 pb-5 bg-[#FDFBF7]">
-                          <div className="flex items-center justify-between mb-3">
-                            <p className="text-xs font-bold text-[#1E1B4B]/40 uppercase tracking-wider">Pages</p>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              disabled={regeneratingPdfForStory === s.id}
-                              onClick={() => handleStoryRegeneratePdf(s.id)}
-                              className="rounded-full border-[#FF9F1C]/40 text-[#FF9F1C] hover:bg-[#FF9F1C]/10 text-xs h-7"
-                            >
-                              <RefreshCw className={`w-3 h-3 mr-1 ${regeneratingPdfForStory === s.id ? "animate-spin" : ""}`} strokeWidth={2} />
-                              {regeneratingPdfForStory === s.id ? "Regenerating…" : "Regen PDF"}
-                            </Button>
-                          </div>
-                          {pages.length === 0 ? (
-                            <p className="text-xs text-[#1E1B4B]/40">Loading pages…</p>
-                          ) : (
-                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-                              {pages.map((page: any) => {
-                                const imgUrl = page.jpeg_url || page.image_url || null;
-                                const pageLabel = page.page === 0 ? "Cover" :
-                                  page.page === pages.length - 1 ? "Back" : `Pg ${page.page}`;
-                                const pageStatus = page.status || "unknown";
-                                return (
-                                  <div key={page.id} className="flex flex-col gap-1.5">
-                                    <div className="rounded-xl overflow-hidden bg-[#F3E8FF] aspect-[3/4] relative group">
-                                      {imgUrl ? (
-                                        <img
-                                          src={imgUrl}
-                                          alt={pageLabel}
-                                          className="w-full h-full object-cover cursor-zoom-in"
-                                          onClick={() => setLightbox({ url: imgUrl, text: page.page === 0 ? [page.cover_title, page.cover_subtitle].filter(Boolean).join("\n") || page.text || "" : page.text || "", label: pageLabel })}
-                                        />
-                                      ) : retryingStoryPageId === page.id ? (
-                                        <div className="w-full h-full flex flex-col items-center justify-center gap-2">
-                                          <RefreshCw className="w-6 h-6 text-[#3730A3]/40 animate-spin" strokeWidth={1.5} />
-                                          <span className="text-[10px] text-[#1E1B4B]/40">Generating…</span>
-                                        </div>
-                                      ) : (
-                                        <div className="w-full h-full flex flex-col items-center justify-center gap-2">
-                                          <BookOpen className="w-6 h-6 text-[#1E1B4B]/20" strokeWidth={1.5} />
-                                          <span className="text-[10px] text-[#1E1B4B]/40">{pageStatus}</span>
-                                        </div>
-                                      )}
-                                      <div className="absolute top-1 left-1">
-                                        <span className="text-[9px] font-bold bg-black/50 text-white rounded px-1 py-0.5">{pageLabel}</span>
-                                      </div>
-                                      {imgUrl && (
-                                        <button
-                                          onClick={() => setLightbox({ url: imgUrl, text: page.page === 0 ? [page.cover_title, page.cover_subtitle].filter(Boolean).join("\n") || page.text || "" : page.text || "", label: pageLabel })}
-                                          className="absolute bottom-1 right-1 bg-black/50 hover:bg-black/70 text-white rounded p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
-                                        >
-                                          <ZoomIn className="w-3.5 h-3.5" strokeWidth={2} />
-                                        </button>
-                                      )}
-                                    </div>
-                                    <Badge className={`${PAGE_STATUS_COLORS[pageStatus] || "bg-[#1E1B4B]/10 text-[#1E1B4B]/50"} border-0 rounded-full px-2 py-0 text-[10px] font-semibold self-start`}>
-                                      {pageStatus}
-                                    </Badge>
-                                    {renderPageGenerationDetails(page)}
-                                    <Button
-                                      variant="outline"
-                                      size="sm"
-                                      disabled={retryingStoryPageId === page.id}
-                                      onClick={() => handleStoryRetryPage(s.id, page.id)}
-                                      className="rounded-full border-[#3730A3]/30 text-[#3730A3] hover:bg-[#3730A3]/10 text-[10px] h-6 px-2"
-                                    >
-                                      <RefreshCw className={`w-3 h-3 mr-1 ${retryingStoryPageId === page.id ? "animate-spin" : ""}`} strokeWidth={2} />
-                                      {retryingStoryPageId === page.id ? "Retrying…" : "Retry"}
-                                    </Button>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Failed Image Generation Tab */}
-        {tab === "failed-image-generation" && (
-          <div data-testid="admin-failed-image-generation">
-            <div className="flex items-center justify-between mb-4">
-              <p className="text-sm text-[#1E1B4B]/50">{failedImageItems.length} failed item(s)</p>
-              <Button
-                variant="outline"
-                onClick={fetchFailedImageGenerations}
-                disabled={loadingFailedImages}
-                className="rounded-full border-[#F3E8FF]"
-              >
-                <RefreshCw className={`w-4 h-4 mr-2 ${loadingFailedImages ? "animate-spin" : ""}`} strokeWidth={2} />
-                Refresh
-              </Button>
-            </div>
-
-            {loadingFailedImages ? (
-              <div className="flex items-center justify-center py-10 text-[#1E1B4B]/40">
-                <RefreshCw className="w-5 h-5 animate-spin mr-2" />
-                Loading failed items…
-              </div>
-            ) : failedImageItems.length === 0 ? (
-              <p className="text-center py-10 text-[#1E1B4B]/40">No failed image generation items</p>
-            ) : (
-              <div className="space-y-2">
-                {failedImageItems.map((item: any) => (
-                  <Card key={item.id} className="rounded-2xl border-2 border-[#F3E8FF]">
-                    <CardContent className="p-4 flex items-center gap-3">
-                      <Badge className="bg-[#E76F51]/15 text-[#E76F51] border-0 rounded-full px-2.5 py-0.5 text-xs font-semibold">
-                        {item.status || "failed"}
-                      </Badge>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-[#1E1B4B] truncate">
-                          Story {item.story_id} · Page {item.page_index ?? "?"}
-                        </p>
-                        <p className="text-xs text-[#1E1B4B]/50 truncate">
-                          pageId: {item.page_id || "-"} · user: {item.user_id || "-"}
-                        </p>
-                        <p className="text-xs text-[#1E1B4B]/40 truncate">
-                          failures: {Number(item.failure_count ?? 0)} · {toDisplayDate(item.last_failed_at)}
-                        </p>
-                        {item.last_error && (
-                          <p className="text-xs text-[#E76F51] truncate mt-0.5">{String(item.last_error)}</p>
-                        )}
-                      </div>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleRetryFailedImage(item.id)}
-                        disabled={retryingFailedDocId === item.id}
-                        className="rounded-full border-[#3730A3]/30 text-[#3730A3] hover:bg-[#3730A3]/10 text-xs"
-                      >
-                        <RefreshCw className={`w-3.5 h-3.5 mr-1 ${retryingFailedDocId === item.id ? "animate-spin" : ""}`} strokeWidth={2} />
-                        {retryingFailedDocId === item.id ? "Retrying…" : "Retry"}
-                      </Button>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Refund Requests Tab */}
-        {tab === "refund-requests" && (
-          <div data-testid="admin-refund-requests">
-            <div className="flex items-center justify-between mb-4">
-              <p className="text-sm text-[#1E1B4B]/50">{refundRequests.length} refund request(s)</p>
-              <Button
-                variant="outline"
-                onClick={fetchRefundRequests}
-                disabled={loadingRefunds}
-                className="rounded-full border-[#F3E8FF]"
-              >
-                <RefreshCw className={`w-4 h-4 mr-2 ${loadingRefunds ? "animate-spin" : ""}`} strokeWidth={2} />
-                Refresh
-              </Button>
-            </div>
-
-            {loadingRefunds ? (
-              <div className="flex items-center justify-center py-10 text-[#1E1B4B]/40">
-                <RefreshCw className="w-5 h-5 animate-spin mr-2" />
-                Loading refund requests…
-              </div>
-            ) : refundRequests.length === 0 ? (
-              <p className="text-center py-10 text-[#1E1B4B]/40">No refund requests yet</p>
-            ) : (
-              <div className="space-y-3">
-                {refundRequests.map((r: any) => {
-                  const isExpanded = expandedRefundId === r.id;
-                  const storyId = r.story_id;
-                  const pages = refundPagesByStory[storyId] || [];
-                  return (
-                    <div key={r.id} className="rounded-2xl border-2 border-[#F3E8FF] bg-white overflow-hidden">
-                      {/* Header row */}
-                      <button
-                        className="w-full flex items-start gap-3 p-4 text-left hover:bg-[#FFF8F0] transition-colors"
-                        onClick={async () => {
-                          const next = isExpanded ? null : r.id;
-                          setExpandedRefundId(next);
-                          if (next && storyId) await fetchRefundStoryPages(storyId);
-                        }}
-                      >
-                        <div className="w-9 h-9 rounded-full bg-[#E76F51]/10 flex items-center justify-center flex-shrink-0 mt-0.5">
-                          <AlertCircle className="w-4 h-4 text-[#E76F51]" strokeWidth={2} />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-semibold text-[#1E1B4B] truncate">
-                            {r.story_title || storyId || "Unknown Story"}
-                          </p>
-                          <p className="text-xs text-[#1E1B4B]/50 truncate">User: {r.user_id}</p>
-                          <p className="text-xs text-[#1E1B4B]/40">{toDisplayDate(r.created_at)}</p>
-                          <p className="text-sm text-[#1E1B4B]/75 mt-1.5 whitespace-pre-wrap break-words line-clamp-2">
-                            {r.issue}
-                          </p>
-                        </div>
-                        <div className="flex flex-col items-end gap-1 flex-shrink-0">
-                          <Badge className={`border-0 rounded-full px-2.5 py-0.5 text-xs font-semibold ${
-                            r.status === "refunded" ? "bg-[#2A9D8F]/15 text-[#2A9D8F]" :
-                            r.status === "closed" ? "bg-[#1E1B4B]/10 text-[#1E1B4B]/50" :
-                            "bg-[#E76F51]/15 text-[#E76F51]"
-                          }`}>
-                            {r.status || "pending"}
-                          </Badge>
-                          {isExpanded
-                            ? <ChevronUp className="w-4 h-4 text-[#1E1B4B]/30 mt-2" />
-                            : <ChevronDown className="w-4 h-4 text-[#1E1B4B]/30 mt-2" />}
-                        </div>
-                      </button>
-
-                      {/* Expanded: full issue + pages */}
-                      {isExpanded && (
-                        <div className="border-t-2 border-[#F3E8FF] px-4 pt-4 pb-5 bg-[#FDFBF7]">
-                          {/* Full issue text */}
-                          <p className="text-xs font-bold text-[#1E1B4B]/40 uppercase tracking-wider mb-2">Issue Description</p>
-                          <p className="text-sm text-[#1E1B4B]/80 whitespace-pre-wrap break-words mb-5 p-3 rounded-xl bg-white border border-[#F3E8FF]">
-                            {r.issue}
-                          </p>
-
-                          {/* Story details */}
-                          <p className="text-xs font-bold text-[#1E1B4B]/40 uppercase tracking-wider mb-2">
-                            Story ID: <span className="font-mono normal-case">{storyId}</span>
-                          </p>
-
-                          {/* Pages grid */}
-                          <p className="text-xs font-bold text-[#1E1B4B]/40 uppercase tracking-wider mb-3">Story Pages</p>
-                          {pages.length === 0 ? (
-                            <p className="text-xs text-[#1E1B4B]/40 mb-4">Loading pages…</p>
-                          ) : (
-                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 mb-5">
-                              {pages.map((page: any) => {
-                                const imgUrl = page.jpeg_url || page.image_url || null;
-                                const pageLabel = page.page === 0 ? "Cover" :
-                                  page.page === pages.length - 1 ? "Back" : `Pg ${page.page}`;
-                                const pageStatus = page.status || "unknown";
-                                return (
-                                  <div key={page.id} className="flex flex-col gap-1.5">
-                                    <div className="rounded-xl overflow-hidden bg-[#F3E8FF] aspect-[3/4] relative group">
-                                      {imgUrl ? (
-                                        <img
-                                          src={imgUrl}
-                                          alt={pageLabel}
-                                          className="w-full h-full object-cover cursor-zoom-in"
-                                          onClick={() => setLightbox({ url: imgUrl, text: page.page === 0 ? [page.cover_title, page.cover_subtitle].filter(Boolean).join("\n") || page.text || "" : page.text || "", label: pageLabel })}
-                                        />
-                                      ) : retryingRefundPageId === page.id ? (
-                                        <div className="w-full h-full flex flex-col items-center justify-center gap-2">
-                                          <RefreshCw className="w-6 h-6 text-[#3730A3]/40 animate-spin" strokeWidth={1.5} />
-                                          <span className="text-[10px] text-[#1E1B4B]/40">Generating…</span>
-                                        </div>
-                                      ) : (
-                                        <div className="w-full h-full flex items-center justify-center">
-                                          <BookOpen className="w-6 h-6 text-[#1E1B4B]/20" strokeWidth={1.5} />
-                                        </div>
-                                      )}
-                                      <div className="absolute top-1 left-1">
-                                        <span className="text-[9px] font-bold bg-black/50 text-white rounded px-1 py-0.5">{pageLabel}</span>
-                                      </div>
-                                      {imgUrl && (
-                                        <button
-                                          onClick={() => setLightbox({ url: imgUrl, text: page.page === 0 ? [page.cover_title, page.cover_subtitle].filter(Boolean).join("\n") || page.text || "" : page.text || "", label: pageLabel })}
-                                          className="absolute bottom-1 right-1 bg-black/50 hover:bg-black/70 text-white rounded p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
-                                        >
-                                          <ZoomIn className="w-3.5 h-3.5" strokeWidth={2} />
-                                        </button>
-                                      )}
-                                    </div>
-                                    <Badge className={`${PAGE_STATUS_COLORS[pageStatus] || "bg-[#1E1B4B]/10 text-[#1E1B4B]/50"} border-0 rounded-full px-2 py-0 text-[10px] font-semibold self-start`}>
-                                      {pageStatus}
-                                    </Badge>
-                                    {renderPageGenerationDetails(page)}
-
-                                    {/* Inline text editor */}
-                                    {editingPageId === page.id ? (
-                                      <div className="flex flex-col gap-1">
-                                        <textarea
-                                          className="text-[10px] text-[#1E1B4B] leading-relaxed bg-white border border-[#3730A3]/40 rounded-lg p-1.5 w-full resize-none focus:outline-none focus:ring-1 focus:ring-[#3730A3]/50"
-                                          rows={4}
-                                          value={pageTextEdits[`${storyId}:${page.id}`] ?? ""}
-                                          onChange={(e) => setPageTextEdits((prev) => ({ ...prev, [`${storyId}:${page.id}`]: e.target.value }))}
-                                        />
-                                        <div className="flex gap-1">
-                                          <Button
-                                            size="sm"
-                                            disabled={savingPageTextId === page.id}
-                                            onClick={() => handleSavePageText(storyId, page)}
-                                            className="rounded-full text-[10px] h-6 px-2 bg-[#3730A3] hover:bg-[#2e278f] text-white gap-1 flex-1"
-                                          >
-                                            <Check className={`w-2.5 h-2.5 ${savingPageTextId === page.id ? "animate-pulse" : ""}`} strokeWidth={2.5} />
-                                            {savingPageTextId === page.id ? "Saving…" : "Save"}
-                                          </Button>
-                                          <Button
-                                            variant="outline"
-                                            size="sm"
-                                            disabled={savingPageTextId === page.id}
-                                            onClick={() => setEditingPageId(null)}
-                                            className="rounded-full text-[10px] h-6 px-2 border-[#1E1B4B]/20 text-[#1E1B4B]/50"
-                                          >
-                                            Cancel
-                                          </Button>
-                                        </div>
-                                      </div>
-                                    ) : (
-                                      <Button
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={() => {
-                                          const currentText = page.page === 0
-                                            ? [page.cover_title, page.cover_subtitle].filter(Boolean).join("\n") || page.text || ""
-                                            : page.text || "";
-                                          setPageTextEdits((prev) => ({ ...prev, [`${storyId}:${page.id}`]: currentText }));
-                                          setEditingPageId(page.id);
-                                        }}
-                                        className="rounded-full text-[10px] border-[#E76F51]/30 text-[#E76F51] hover:bg-[#E76F51]/10 h-6 px-2 gap-1"
-                                      >
-                                        <Pencil className="w-2.5 h-2.5" strokeWidth={2} />
-                                        Edit Text
-                                      </Button>
-                                    )}
-
-                                    <Button
-                                      variant="outline"
-                                      size="sm"
-                                      disabled={retryingRefundPageId === page.id}
-                                      onClick={() => handleRefundRetryPage(storyId, page.id)}
-                                      className="rounded-full text-xs border-[#3730A3]/30 text-[#3730A3] hover:bg-[#3730A3]/10 h-7 px-3"
-                                    >
-                                      <RefreshCw className={`w-3 h-3 mr-1 ${retryingRefundPageId === page.id ? "animate-spin" : ""}`} strokeWidth={2} />
-                                      {retryingRefundPageId === page.id ? "Retrying…" : "Retry"}
-                                    </Button>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          )}
-
-                          {/* Generate PDF + Send Correction Email */}
-                          <div className="flex flex-wrap items-center gap-3 pt-3 border-t border-[#F3E8FF]">
-                            <Button
-                              onClick={() => handleRefundRegeneratePdf(storyId)}
-                              disabled={regeneratingPdfForStory === storyId}
-                              className="rounded-full bg-[#3730A3] hover:bg-[#2e278f] text-white font-semibold gap-2"
-                            >
-                              <RefreshCw className={`w-4 h-4 ${regeneratingPdfForStory === storyId ? "animate-spin" : ""}`} strokeWidth={2.5} />
-                              {regeneratingPdfForStory === storyId ? "Queuing PDF…" : "Regenerate PDF"}
-                            </Button>
-                            <Button
-                              onClick={() => handleSendCorrectionEmail(storyId)}
-                              disabled={sendingCorrectionEmail === storyId}
-                              variant="outline"
-                              className="rounded-full border-[#2A9D8F] text-[#2A9D8F] hover:bg-[#2A9D8F]/10 font-semibold gap-2"
-                            >
-                              <Mail className={`w-4 h-4 ${sendingCorrectionEmail === storyId ? "animate-pulse" : ""}`} strokeWidth={2} />
-                              {sendingCorrectionEmail === storyId ? "Sending…" : "Send Correction Email"}
-                            </Button>
-                            {refundStoryPdfByStory[storyId] ? (
-                              <a
-                                href={refundStoryPdfByStory[storyId]}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="inline-flex items-center gap-1.5 text-xs font-medium text-[#3730A3] underline underline-offset-2 hover:text-[#2e278f] w-full"
-                              >
-                                📄 Review PDF
-                              </a>
-                            ) : null}
-                            <p className="text-xs text-[#1E1B4B]/40 w-full">
-                              Regenerate first, review the PDF, then send the correction email to notify the user.
-                            </p>
-                          </div>
-
-                          {/* Issue Refund + Close Request */}
-                          {r.status !== "refunded" && r.status !== "closed" && (
-                            <div className="flex flex-wrap items-center gap-3 pt-3 mt-3 border-t border-[#F3E8FF]">
-                              <Button
-                                onClick={() => handleIssueRefund(r.id)}
-                                disabled={issuingRefund === r.id}
-                                variant="outline"
-                                className="rounded-full border-[#E76F51] text-[#E76F51] hover:bg-[#E76F51]/10 font-semibold gap-2"
-                              >
-                                <IndianRupee className={`w-4 h-4 ${issuingRefund === r.id ? "animate-pulse" : ""}`} strokeWidth={2} />
-                                {issuingRefund === r.id ? "Issuing Refund…" : "Issue Refund"}
-                              </Button>
-                              <Button
-                                onClick={() => handleCloseRefundRequest(r.id)}
-                                disabled={closingRefundRequest === r.id}
-                                variant="outline"
-                                className="rounded-full border-[#1E1B4B]/30 text-[#1E1B4B]/60 hover:bg-[#1E1B4B]/5 font-semibold gap-2"
-                              >
-                                <X className={`w-4 h-4 ${closingRefundRequest === r.id ? "animate-pulse" : ""}`} strokeWidth={2} />
-                                {closingRefundRequest === r.id ? "Closing…" : "Close Request"}
-                              </Button>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Lightbox */}
-        {lightbox && (
-          <div
-            className="fixed inset-0 z-[999] bg-black/85 flex items-center justify-center p-4"
-            onClick={() => setLightbox(null)}
-          >
-            <button
-              onClick={() => setLightbox(null)}
-              className="absolute top-4 right-4 text-white/70 hover:text-white bg-white/10 hover:bg-white/20 rounded-full p-2 transition-colors"
-            >
-              <X className="w-5 h-5" strokeWidth={2} />
-            </button>
-            <div
-              className="flex flex-col w-fit max-w-[90vw] max-h-[90vh]"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <img
-                src={lightbox.url}
-                alt={lightbox.label}
-                className={`w-auto max-w-[90vw] object-contain shadow-2xl block ${
-                  lightbox.text ? "rounded-t-2xl" : "rounded-2xl"
-                }`}
-                style={{ maxHeight: lightbox.text ? "72vh" : "90vh" }}
+            {tab === "stories" && (
+              <AdminStoriesTab
+                visibleStories={visibleStories}
+                expandedStoryId={expandedStoryId}
+                setExpandedStoryId={setExpandedStoryId}
+                storyPagesByStory={storyPagesByStory}
+                fetchStoryPages={fetchStoryPages}
+                handleStoryRetryPage={handleStoryRetryPage}
+                handleStoryRegeneratePdf={handleStoryRegeneratePdf}
+                regeneratingPdfForStory={regeneratingPdfForStory}
+                retryingStoryPageId={retryingStoryPageId}
+                userEmailById={userEmailById}
+                setLightbox={setLightbox}
               />
-              {lightbox.text && (
-                <div className="rounded-b-2xl bg-black/75 px-4 py-3 max-h-[18vh] overflow-y-auto w-full">
-                  <p className="text-[11px] font-semibold text-white/50 uppercase tracking-wider mb-1">{lightbox.label}</p>
-                  <p className="font-story text-base text-white leading-relaxed whitespace-pre-wrap break-words">{lightbox.text}</p>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Contacts Tab */}
-        {tab === "contacts" && (
-          <div data-testid="admin-contacts">
-            <div className="flex items-center justify-between mb-4">
-              <p className="text-sm text-[#1E1B4B]/50">{contacts.length} contact quer(y/ies)</p>
-              <Button
-                variant="outline"
-                onClick={fetchContacts}
-                disabled={loadingContacts}
-                className="rounded-full border-[#F3E8FF]"
-              >
-                <RefreshCw className={`w-4 h-4 mr-2 ${loadingContacts ? "animate-spin" : ""}`} strokeWidth={2} />
-                Refresh
-              </Button>
-            </div>
-
-            {loadingContacts ? (
-              <div className="flex items-center justify-center py-10 text-[#1E1B4B]/40">
-                <RefreshCw className="w-5 h-5 animate-spin mr-2" />
-                Loading contact queries...
-              </div>
-            ) : contacts.length === 0 ? (
-              <p className="text-center py-10 text-[#1E1B4B]/40">No contact queries yet</p>
-            ) : (
-              <div className="space-y-2">
-                {contacts.map((c: any) => (
-                  <Card key={c.id} className="rounded-2xl border-2 border-[#F3E8FF]">
-                    <CardContent className="p-4 flex items-start gap-3">
-                      <div className="w-9 h-9 rounded-full bg-[#3730A3]/10 flex items-center justify-center flex-shrink-0 mt-0.5">
-                        <Mail className="w-4 h-4 text-[#3730A3]" strokeWidth={2} />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-semibold text-[#1E1B4B]">{c.name || "Unknown"}</p>
-                        <p className="text-xs text-[#1E1B4B]/55">{c.email || "-"} · {c.phone_number || "-"}</p>
-                        <p className="text-xs text-[#1E1B4B]/40 mt-0.5">{toDisplayDate(c.created_at)}</p>
-                        <p className="text-sm text-[#1E1B4B]/80 mt-2 whitespace-pre-wrap break-words">{c.query || "-"}</p>
-                      </div>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleDeleteContact(c.id)}
-                        disabled={deletingContactId === c.id}
-                        className="rounded-full border-[#E76F51]/30 text-[#E76F51] hover:bg-[#E76F51]/10 text-xs"
-                      >
-                        <Trash2 className="w-3.5 h-3.5 mr-1" strokeWidth={2} />
-                        {deletingContactId === c.id ? "Deleting..." : "Delete"}
-                      </Button>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {tab === "coupons" && (
-          <div data-testid="admin-coupons">
-            <Card className="rounded-2xl border-2 border-[#F3E8FF] mb-4">
-              <CardContent className="p-4">
-                <p className="text-sm font-semibold text-[#1E1B4B] mb-3" style={{ fontFamily: "Fredoka" }}>
-                  Add Discount Coupon
-                </p>
-                <div className="grid grid-cols-1 sm:grid-cols-[1fr_140px_140px_auto] gap-2">
-                  <Input
-                    value={couponCodeInput}
-                    onChange={(e) => setCouponCodeInput(e.target.value)}
-                    placeholder="Coupon code (e.g. SUMMER50)"
-                    className="rounded-full border-[#F3E8FF]"
-                  />
-                  <Input
-                    value={couponDiscountInput}
-                    onChange={(e) => setCouponDiscountInput(e.target.value)}
-                    placeholder="Discount %"
-                    type="number"
-                    min={1}
-                    max={100}
-                    step="0.01"
-                    className="rounded-full border-[#F3E8FF]"
-                  />
-                  <Input
-                    value={couponUsageInput}
-                    onChange={(e) => setCouponUsageInput(e.target.value)}
-                    placeholder="Allowed usage"
-                    type="number"
-                    min={1}
-                    className="rounded-full border-[#F3E8FF]"
-                  />
-                  <Button
-                    onClick={handleAddCoupon}
-                    disabled={addingCoupon}
-                    className="rounded-full bg-[#2A9D8F] hover:bg-[#238f82] text-white"
-                  >
-                    {addingCoupon ? "Adding…" : "Add Coupon"}
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-sm text-[#1E1B4B]/50">{coupons.length} coupon(s)</p>
-              <Button
-                variant="outline"
-                onClick={fetchCoupons}
-                disabled={loadingCoupons}
-                className="rounded-full border-[#F3E8FF]"
-              >
-                <RefreshCw className={`w-4 h-4 mr-2 ${loadingCoupons ? "animate-spin" : ""}`} strokeWidth={2} />
-                Refresh
-              </Button>
-            </div>
-
-            {loadingCoupons ? (
-              <div className="flex items-center justify-center py-10 text-[#1E1B4B]/40">
-                <RefreshCw className="w-5 h-5 animate-spin mr-2" />
-                Loading coupons…
-              </div>
-            ) : coupons.length === 0 ? (
-              <p className="text-center py-10 text-[#1E1B4B]/40">No coupons configured</p>
-            ) : (
-              <div className="space-y-2">
-                {coupons.map((c: any) => (
-                  <Card key={c.id} className="rounded-2xl border-2 border-[#F3E8FF]">
-                    <CardContent className="p-4 flex items-center gap-3">
-                      <Badge className="bg-[#3730A3]/15 text-[#3730A3] border-0 rounded-full px-2.5 py-0.5 text-xs font-semibold">
-                        {c.code || c.id}
-                      </Badge>
-                      <Badge className="bg-[#2A9D8F]/15 text-[#2A9D8F] border-0 rounded-full px-2.5 py-0.5 text-xs font-semibold">
-                        {Number(c.discount_percent ?? 0)}% off
-                      </Badge>
-                      <p className="text-sm text-[#1E1B4B]/70">
-                        Remaining: <span className="font-semibold text-[#1E1B4B]">{Number(c.remaining_uses ?? 0)}</span>
-                      </p>
-                      <p className="text-xs text-[#1E1B4B]/40">/ Initial: {Number(c.initial_uses ?? 0)}</p>
-                      <span className="flex-1" />
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleDeleteCoupon(c.id)}
-                        disabled={deletingCoupon === c.id}
-                        className="rounded-full border-[#E76F51]/30 text-[#E76F51] hover:bg-[#E76F51]/10 text-xs"
-                      >
-                        <Trash2 className="w-3.5 h-3.5 mr-1" strokeWidth={2} />
-                        {deletingCoupon === c.id ? "Removing…" : "Remove"}
-                      </Button>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Payments Tab */}
-        {tab === "payments" && (
-          <div data-testid="admin-payments">
-            <p className="text-sm text-[#1E1B4B]/50 mb-4">{payments.length} total payments</p>
-            <div className="space-y-2">
-              {payments.length === 0 ? (
-                <p className="text-center py-12 text-[#1E1B4B]/40">No payments yet</p>
-              ) : (
-                payments.map((p, i) => (
-                  <div key={i} className="flex items-center gap-3 p-4 rounded-xl bg-white border-2 border-[#F3E8FF]">
-                    <Badge className={`${PAY_STATUS_COLORS[p.status] || ""} rounded-full px-2.5 py-0.5 text-xs font-semibold border-0`}>
-                      {p.status}
-                    </Badge>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-[#1E1B4B]">₹{p.amount} — {p.page_count} pages</p>
-                      {!!p.discount_amount && (
-                        <p className="text-xs text-[#2A9D8F]">
-                          Discount: ₹{p.discount_amount}
-                          {p.coupon_code ? ` (${p.coupon_code})` : ""}
-                          {p.discount_percent ? ` · ${p.discount_percent}%` : ""}
-                        </p>
-                      )}
-                      <p className="text-xs text-[#1E1B4B]/40 font-mono truncate">{p.order_id}</p>
-                    </div>
-                    <span className="text-xs text-[#1E1B4B]/30">
-                      {toDisplayDate(p.created_at)}
-                    </span>
-                    {p.status === "paid" && (
-                      <Button
-                        data-testid={`btn-refund-${p.payment_id}`}
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleRefund(p.payment_id)}
-                        className="rounded-full border-[#E76F51]/30 text-[#E76F51] hover:bg-[#E76F51]/10 text-xs h-8"
-                      >
-                        <Undo2 className="w-3 h-3 mr-1" strokeWidth={2.5} />
-                        Refund
-                      </Button>
-                    )}
-                    {p.status === "refunded" && (
-                      <span className="text-xs text-[#3730A3] font-medium">Refunded</span>
-                    )}
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Costs Tab */}
-        {tab === "costs" && (
-          <div data-testid="admin-costs">
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <p className="text-sm font-semibold text-[#1E1B4B]" style={{ fontFamily: "Fredoka" }}>
-                  API Cost per User
-                </p>
-                {costReport && (
-                  <p className="text-xs text-[#1E1B4B]/40 mt-0.5">
-                    Rate: $1 = ₹{costReport.usdToInr} &nbsp;·&nbsp; Pricing as of {costReport.pricingAsOf}
-                  </p>
-                )}
-              </div>
-              <Button
-                variant="outline"
-                onClick={() => { setCostReport(null); fetchCosts(); }}
-                disabled={loadingCosts}
-                className="rounded-full border-[#F3E8FF]"
-              >
-                <RefreshCw className={`w-4 h-4 mr-2 ${loadingCosts ? "animate-spin" : ""}`} strokeWidth={2} />
-                {loadingCosts ? "Loading…" : "Refresh"}
-              </Button>
-            </div>
-
-            {loadingCosts && !costReport && (
-              <div className="flex items-center justify-center py-20 text-[#1E1B4B]/40">
-                <RefreshCw className="w-5 h-5 animate-spin mr-2" />
-                Fetching cost data…
-              </div>
             )}
 
-            {!loadingCosts && costReport && costReport.users.length === 0 && (
-              <p className="text-center py-12 text-[#1E1B4B]/40">No usage data yet</p>
+            {tab === "failed-image-generation" && (
+              <AdminFailedImagesTab
+                failedImageItems={failedImageItems}
+                loadingFailedImages={loadingFailedImages}
+                fetchFailedImageGenerations={fetchFailedImageGenerations}
+                handleRetryFailedImage={handleRetryFailedImage}
+                retryingFailedDocId={retryingFailedDocId}
+              />
             )}
 
-            {costReport && costReport.users.length > 0 && (
-              <>
-                {/* Summary card */}
-                <Card className="rounded-2xl border-2 border-[#F3E8FF] mb-5">
-                  <CardContent className="p-5 flex flex-wrap gap-6">
-                    <div>
-                      <p className="text-xs font-bold text-[#1E1B4B]/40 uppercase tracking-wider mb-1">Total Users</p>
-                      <p className="text-2xl font-bold text-[#1E1B4B]" style={{ fontFamily: "Fredoka" }}>
-                        {costReport.users.length}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-xs font-bold text-[#1E1B4B]/40 uppercase tracking-wider mb-1">Total Cost (USD)</p>
-                      <p className="text-2xl font-bold text-[#1E1B4B]" style={{ fontFamily: "Fredoka" }}>
-                        ${costReport.users.reduce((s: number, u: any) => s + u.totalCostUsd, 0).toFixed(4)}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-xs font-bold text-[#1E1B4B]/40 uppercase tracking-wider mb-1">Total Cost (INR)</p>
-                      <p className="text-2xl font-bold text-[#FF9F1C]" style={{ fontFamily: "Fredoka" }}>
-                        ₹{costReport.users.reduce((s: number, u: any) => s + u.totalCostInr, 0).toFixed(2)}
-                      </p>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                {/* Per-user rows */}
-                <div className="space-y-2">
-                  {costReport.users.map((u: any) => (
-                    <div
-                      key={u.userId}
-                      className="bg-white rounded-xl border-2 border-[#F3E8FF] overflow-hidden"
-                    >
-                      <button
-                        className="w-full flex items-center gap-3 p-4 text-left hover:bg-[#FDFBF7] transition-colors"
-                        onClick={() => setExpandedUser(expandedUser === u.userId ? null : u.userId)}
-                      >
-                        <div className="w-8 h-8 rounded-full bg-[#F3E8FF] flex items-center justify-center flex-shrink-0">
-                          <span className="text-xs font-bold text-[#3730A3]">
-                            {(u.email?.[0] ?? "?").toUpperCase()}
-                          </span>
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-[#1E1B4B] truncate">{u.email}</p>
-                          <p className="text-xs text-[#1E1B4B]/40 font-mono truncate">{u.userId.slice(0, 16)}…</p>
-                        </div>
-                        <div className="text-right flex-shrink-0">
-                          <p className="text-sm font-bold text-[#FF9F1C]">₹{u.totalCostInr.toFixed(3)}</p>
-                          <p className="text-xs text-[#1E1B4B]/40">${u.totalCostUsd.toFixed(5)}</p>
-                        </div>
-                        {expandedUser === u.userId
-                          ? <ChevronUp className="w-4 h-4 text-[#1E1B4B]/30 flex-shrink-0" />
-                          : <ChevronDown className="w-4 h-4 text-[#1E1B4B]/30 flex-shrink-0" />
-                        }
-                      </button>
-
-                      {expandedUser === u.userId && (
-                        <div className="border-t border-[#F3E8FF] px-4 pb-4 pt-3 space-y-2">
-                          <p className="text-xs font-bold text-[#1E1B4B]/40 uppercase tracking-wider mb-2">Task Breakdown</p>
-                          {Object.entries(u.byTask).map(([task, val]: any) => (
-                            <div key={task} className="flex items-center gap-2 text-sm">
-                              <Badge className="bg-[#3730A3]/10 text-[#3730A3] border-0 rounded-full px-2.5 py-0.5 text-xs font-semibold">
-                                {task}
-                              </Badge>
-                              <span className="text-[#1E1B4B]/50 text-xs">{val.tokens.toLocaleString()} tokens</span>
-                              <span className="flex-1" />
-                              <span className="text-xs text-[#1E1B4B]/40">${val.costUsd.toFixed(6)}</span>
-                              <span className="text-xs font-semibold text-[#FF9F1C]">₹{val.costInr.toFixed(4)}</span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-
-                {/* Pricing footnote */}
-                <div className="mt-6 p-4 rounded-xl bg-[#F3E8FF]/40 text-xs text-[#1E1B4B]/50 space-y-1">
-                  <p className="font-semibold text-[#1E1B4B]/60">Pricing sources</p>
-                  <p>
-                    Gemini: gemini-2.5-flash $0.30/$2.50 per 1M in/out · avatar gen $0.10/$30.00 per 1M in/out
-                  </p>
-                  <p>
-                    Sarvam: sarvam-30b $0.40/$1.60 per 1M in/out · transliteration $0.005 per 1K chars
-                  </p>
-                  <p>USD → INR at ₹96 (fixed reference rate)</p>
-                </div>
-              </>
+            {tab === "refund-requests" && (
+              <AdminRefundRequestsTab
+                refundRequests={refundRequests}
+                loadingRefunds={loadingRefunds}
+                fetchRefundRequests={fetchRefundRequests}
+                expandedRefundId={expandedRefundId}
+                setExpandedRefundId={setExpandedRefundId}
+                refundPagesByStory={refundPagesByStory}
+                fetchRefundStoryPages={fetchRefundStoryPages}
+                refundStoryPdfByStory={refundStoryPdfByStory}
+                handleRefundRetryPage={handleRefundRetryPage}
+                retryingRefundPageId={retryingRefundPageId}
+                handleRefundRegeneratePdf={handleRefundRegeneratePdf}
+                regeneratingPdfForStory={regeneratingPdfForStory}
+                handleSendCorrectionEmail={handleSendCorrectionEmail}
+                sendingCorrectionEmail={sendingCorrectionEmail}
+                handleIssueRefund={handleIssueRefund}
+                issuingRefund={issuingRefund}
+                handleCloseRefundRequest={handleCloseRefundRequest}
+                closingRefundRequest={closingRefundRequest}
+                handleSavePageText={handleSavePageText}
+                pageTextEdits={pageTextEdits}
+                setPageTextEdits={setPageTextEdits}
+                editingPageId={editingPageId}
+                setEditingPageId={setEditingPageId}
+                savingPageTextId={savingPageTextId}
+                setLightbox={setLightbox}
+              />
             )}
-          </div>
-        )}
+
+            {tab === "contacts" && (
+              <AdminContactsTab
+                contacts={contacts}
+                loadingContacts={loadingContacts}
+                fetchContacts={fetchContacts}
+                handleDeleteContact={handleDeleteContact}
+                deletingContactId={deletingContactId}
+              />
+            )}
+
+            {tab === "whitelist" && (
+              <AdminWhitelistTab
+                allUsers={allUsers}
+                whitelistMap={whitelistMap}
+                loadingWhitelist={loadingWhitelist}
+                whitelistSearch={whitelistSearch}
+                setWhitelistSearch={setWhitelistSearch}
+                savingWhitelistUser={savingWhitelistUser}
+                whitelistEmail={whitelistEmail}
+                setWhitelistEmail={setWhitelistEmail}
+                addingWhitelistEmail={addingWhitelistEmail}
+                fetchWhitelistData={fetchWhitelistData}
+                handleToggleWhitelist={handleToggleWhitelist}
+                handleAddWhitelistEmail={handleAddWhitelistEmail}
+                handleRemoveWhitelistEmail={handleRemoveWhitelistEmail}
+              />
+            )}
+
+            {tab === "coupons" && (
+              <AdminCouponsTab
+                coupons={coupons}
+                loadingCoupons={loadingCoupons}
+                fetchCoupons={fetchCoupons}
+                couponCodeInput={couponCodeInput}
+                setCouponCodeInput={setCouponCodeInput}
+                couponDiscountInput={couponDiscountInput}
+                setCouponDiscountInput={setCouponDiscountInput}
+                couponUsageInput={couponUsageInput}
+                setCouponUsageInput={setCouponUsageInput}
+                addingCoupon={addingCoupon}
+                handleAddCoupon={handleAddCoupon}
+                handleDeleteCoupon={handleDeleteCoupon}
+                deletingCoupon={deletingCoupon}
+              />
+            )}
+
+            {tab === "payments" && (
+              <AdminPaymentsTab payments={payments} handleRefund={handleRefund} />
+            )}
+
+            {tab === "costs" && (
+              <AdminCostsTab
+                costReport={costReport}
+                loadingCosts={loadingCosts}
+                fetchCosts={fetchCosts}
+                setCostReport={setCostReport}
+                expandedUser={expandedUser}
+                setExpandedUser={setExpandedUser}
+              />
+            )}
           </div>
         </div>
       </div>
+
+      {/* Lightbox */}
+      {lightbox && (
+        <div
+          className="fixed inset-0 z-[999] bg-black/85 flex items-center justify-center p-4"
+          onClick={() => setLightbox(null)}
+        >
+          <button
+            onClick={() => setLightbox(null)}
+            className="absolute top-4 right-4 text-white/70 hover:text-white bg-white/10 hover:bg-white/20 rounded-full p-2 transition-colors"
+          >
+            <X className="w-5 h-5" strokeWidth={2} />
+          </button>
+          <div
+            className="flex flex-col w-fit max-w-[90vw] max-h-[90vh]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <img
+              src={lightbox.url}
+              alt={lightbox.label}
+              className={`w-auto max-w-[90vw] object-contain shadow-2xl block ${
+                lightbox.text ? "rounded-t-2xl" : "rounded-2xl"
+              }`}
+              style={{ maxHeight: lightbox.text ? "72vh" : "90vh" }}
+            />
+            {lightbox.text && (
+              <div className="rounded-b-2xl bg-black/75 px-4 py-3 max-h-[18vh] overflow-y-auto w-full">
+                <p className="text-[11px] font-semibold text-white/50 uppercase tracking-wider mb-1">
+                  {lightbox.label}
+                </p>
+                <p className="font-story text-base text-white leading-relaxed whitespace-pre-wrap break-words">
+                  {lightbox.text}
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
