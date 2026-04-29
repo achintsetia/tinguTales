@@ -90,11 +90,12 @@ export default function AdminStoriesTab({
                         {s.title || "Untitled Story"}
                       </p>
                       {s.quality_confirmed_at && (
-                        <Check
-                          className="w-3.5 h-3.5 text-[#2A9D8F] flex-shrink-0"
-                          strokeWidth={2.5}
+                        <span
+                          className="flex-shrink-0 inline-flex items-center justify-center w-5 h-5 rounded-full bg-[#2A9D8F]"
                           title="Quality confirmed by user"
-                        />
+                        >
+                          <Check className="w-3 h-3 text-white" strokeWidth={3} />
+                        </span>
                       )}
                     </div>
                     <p className="text-xs text-[#1E1B4B]/50 truncate">
