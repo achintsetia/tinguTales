@@ -212,10 +212,6 @@ export default function SampleStories() {
                     loading="lazy"
                     referrerPolicy="no-referrer"
                   />
-                  <div
-                    className="absolute inset-0"
-                    onContextMenu={(event) => event.preventDefault()}
-                  />
                 </div>
               </article>
             </div>
