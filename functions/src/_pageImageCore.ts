@@ -216,12 +216,14 @@ export function buildIllustrationPrompt(payload: PageImageTaskPayload): string {
     "";
 
   const commonContextDesc = commonContextEntities.length > 0 ?
-    "COMMON CONTEXT ENTITIES — keep recurring people/animals/vehicles/objects visually identical when they appear: " +
+    "COMMON CONTEXT ENTITIES — every recurring animal/person/vehicle/object must look IDENTICAL to its first appearance: " +
     commonContextEntities.map((entity) =>
       `${entity.name} [${entity.category}] (${entity.role}): ${entity.appearance}` +
       (entity.consistency_notes ? ` Consistency: ${entity.consistency_notes}` : "")
     ).join(" | ") +
-    " CRITICAL: Do not change colors, structure, clothing, markings, or defining traits of recurring entities across pages. " :
+    " CRITICAL — FOR ANIMALS ESPECIALLY: the exact skin/fur/feather colour must never shift between pages. " +
+    "Do not reinterpret colour tones — reproduce the exact shade described above on every page. " +
+    "Do not change body size, markings, accessories, or any defining trait of any recurring entity. " :
     "";
 
   if (payload.pageType === "cover") {

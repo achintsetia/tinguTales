@@ -194,7 +194,11 @@ export const processPageImage = onTaskDispatched<PageImageTaskPayload>(
                 "Face: same eye shape, eye colour, skin tone, nose, and mouth as the avatar — no variations. " +
                 "Top garment: same shirt/kurta/top colour, cut, and pattern as the avatar. " +
                 "Bottom garment: same pants/skirt/lehenga colour, cut, and pattern as the avatar — never substitute a different colour or style. " +
-                "Footwear: same shoes/sandals/chappals as the avatar — identical style and colour on every page.",
+                "Footwear: same shoes/sandals/chappals as the avatar — identical style and colour on every page. " +
+                "SECONDARY CHARACTER AND ENTITY CONSISTENCY: all recurring animals, people, and objects described in the prompt must also look IDENTICAL across every page. " +
+                "For animals: the exact skin, fur, or feather colour must never shift between pages — an elephant described as warm gray must be warm gray on every page, not blue-gray or dark gray. " +
+                "For people: same face, skin tone, hair, and outfit throughout. " +
+                "NEVER reinterpret or 'improve' the colour of a recurring entity — reproduce its exact appearance as described in the prompt on every single page.",
               },
             });
 

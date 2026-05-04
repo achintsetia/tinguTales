@@ -219,7 +219,7 @@ async function extractCommonContextEntities(
     "Exclude the main child protagonist whose name is \"" + childName + "\".\n\n" +
     "For each entity, provide a DETAILED and SPECIFIC visual description and strict consistency notes.\n" +
     "For people: include age range, skin tone, face features, hair, top/bottom clothing, footwear, accessories.\n" +
-    "For animals: include species/breed, fur/skin/feather colour, markings, collar/accessories, body build.\n" +
+    "For animals: include species/breed, exact skin/fur/feather colour with a precise tone descriptor (e.g. 'warm medium gray', 'blue-gray', 'golden brown', 'dark charcoal gray') — be as specific as possible so the colour is reproducible across pages, plus any markings, collar/accessories, and body build.\n" +
     "For vehicles/objects: include exact colour palette, structure/shape, material feel, and distinctive details.\n" +
     "For places: include architectural style, colours, motifs, recurring decor elements.\n" +
     "If details are missing, infer culturally appropriate Indian defaults and keep them plausible.\n\n" +
