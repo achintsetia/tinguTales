@@ -197,16 +197,16 @@ export function buildIllustrationPrompt(payload: PageImageTaskPayload): string {
   })();
 
   const characterDesc = card ? (
-    `The protagonist is a ${card.gender || "child"} with ${card.skin_tone} skin tone. ` +
-    `Face: ${card.face}. Hair: ${card.hair}. ` +
-    `Accessories: ${card.accessories}. Outfit: ${card.default_outfit}. ` +
-    `Lower garment: ${card.lower_garment || "as shown in avatar reference"} — ` +
-    "this EXACT lower garment color and style must appear on EVERY page without exception. " +
-    "CRITICAL: Keep the character's clothing EXACTLY as shown in the provided reference avatar image — " +
-    "the top garment (shirt/top/blouse/kurta) and bottom garment (pants/skirt/lehenga/dhoti) must match " +
-    "the avatar reference in colour, style, and pattern on every single page. " +
-    "Footwear must also be consistent on every page: the child's shoes, sandals, chappals, or bare feet must remain " +
-    "identical in style, colour, and type — never switch or omit footwear mid-story."
+    "PROTAGONIST — must look IDENTICAL on every single page of this storybook. " +
+    "Use the provided reference avatar image as the ground truth for this character's appearance. " +
+    `Gender: ${card.gender || "child"}. Skin tone: ${card.skin_tone}. ` +
+    `Face: ${card.face} — do NOT change eye shape, eye colour, nose, or mouth. ` +
+    `Hair: ${card.hair} — EXACT same hair length, colour, style, and any accessories (clips/ribbons/ties) on every page. Do NOT shorten, lengthen, loosen, curl, or otherwise alter the hair. ` +
+    `Accessories: ${card.accessories} — always present, never removed or swapped. ` +
+    `Top garment: ${card.default_outfit} — same colour, cut, and pattern on every page. ` +
+    `Bottom garment: ${card.lower_garment || "as shown in avatar reference"} — same colour, cut, and pattern on every page. ` +
+    "Footwear: same shoes/sandals/chappals/bare feet as the reference avatar — never change style or colour. " +
+    "STRICT RULE: Do not modify any aspect of this character's appearance — face, hair, skin, outfit, or footwear — between pages."
   ) : "";
 
   const supportingCharDesc = supportingChars.length > 0 ?

@@ -64,13 +64,20 @@ export default function PricingConfigPage() {
         }
       }
 
-      // If pricing/public doesn't exist yet, create it so the collection is visible in Firestore.
+      // Seed with standard tiers if no config exists yet.
+      const defaultTiers: PricingTier[] = [
+        { pages: 8, price: 99, enabled: true },
+        { pages: 12, price: 149, enabled: true },
+        { pages: 16, price: 199, enabled: true },
+        { pages: 20, price: 249, enabled: true },
+        { pages: 24, price: 299, enabled: true },
+      ];
       await setDoc(doc(db, "pricing", "public"), {
-        tiers: [],
+        tiers: defaultTiers,
         payments_enabled: false,
       }, { merge: true });
 
-      setTiers([]);
+      setTiers(defaultTiers);
     } catch {
       toast.error("Failed to load pricing config");
     } finally {

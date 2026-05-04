@@ -185,12 +185,12 @@ function chooseFontSize(text: string, width: number, height: number): number {
  * @param {boolean} isLongText - Whether the text needs a lighter weight.
  * @return {string} Pango font descriptor.
  */
-function buildStoryFont(text: string, fontSize: number, isLongText: boolean): string {
+function buildStoryFont(text: string, fontSize: number): string {
   if (isMostlyLatinText(text)) {
-    return isLongText ? `Comic Sans MS ${fontSize}` : `Comic Sans MS Bold ${fontSize}`;
+    return `Comic Sans MS Bold ${fontSize}`;
   }
 
-  return isLongText ? `Sans ${fontSize}` : `Sans Bold ${fontSize}`;
+  return `Sans Bold ${fontSize}`;
 }
 
 /**
@@ -220,7 +220,7 @@ function buildTextLayers(
     width: innerWidth,
     height: innerHeight,
     align: isLongText ? "left" : "center",
-    font: buildStoryFont(text, fontSize, isLongText),
+    font: buildStoryFont(text, fontSize),
   }];
 }
 

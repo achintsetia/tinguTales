@@ -748,7 +748,7 @@ export const generateStoryDraft = onCall<GenerateStoryDraftRequest>(
       throw new HttpsError("invalid-argument", "profileId, language, languageCode, and interests are required.");
     }
 
-    const pageCount = Math.max(6, Math.min(16, rawPageCount ?? 8));
+    const pageCount = Math.max(6, Math.min(24, rawPageCount ?? 8));
 
     // ── Fetch and validate child profile ──────────────────────────────────
     const profileSnap = await db.collection("child_profiles").doc(profileId).get();

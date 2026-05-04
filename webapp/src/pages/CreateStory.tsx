@@ -227,7 +227,7 @@ const STEPS = [
   { num: 5, label: "Review" },
 ];
 
-const FALLBACK_PRICING_TABLE: Record<number, number> = { 6: 79, 8: 99, 10: 129, 12: 149 };
+const FALLBACK_PRICING_TABLE: Record<number, number> = { 8: 240, 12: 360, 16: 480, 20: 600, 24: 720 };
 const AVATAR_CONFETTI = [
   { left: "7%", top: "10%", color: "#FF9F1C", delay: "0s", duration: "2s", rotate: "-16deg", width: "10px", height: "18px" },
   { left: "18%", top: "4%", color: "#E76F51", delay: "0.2s", duration: "1.8s", rotate: "14deg", width: "8px", height: "14px" },
@@ -2035,10 +2035,11 @@ export default function CreateStory() {
             </div>
             <div className="grid grid-cols-2 gap-4 max-w-lg mx-auto">
               {[
-                { count: 6, label: "Short", desc: "4 story pages" },
-                { count: 8, label: "Standard", desc: "6 story pages", recommended: true },
-                { count: 10, label: "Long", desc: "8 story pages" },
-                { count: 12, label: "Extended", desc: "10 story pages" },
+                { count: 8, label: "Short", desc: "6 story pages" },
+                { count: 12, label: "Standard", desc: "10 story pages", recommended: true },
+                { count: 16, label: "Long", desc: "14 story pages" },
+                { count: 20, label: "Extended", desc: "18 story pages" },
+                { count: 24, label: "Deluxe", desc: "22 story pages" },
               ].map((opt) => (
                 <Card
                   key={opt.count}

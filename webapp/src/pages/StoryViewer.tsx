@@ -212,16 +212,18 @@ export default function StoryViewer() {
     const stepsOrder = ["understanding_input", "planning_story", "writing_story", "quality_check", "approved", "generating_scenes", "generating_images", "creating_pdf"];
     const currentStepIdx = stepsOrder.indexOf(story?.status ?? "");
 
-    // Use real-time livePages from subcollection; fall back to placeholders
-    const inProgressPages = livePages.length > 0
-      ? livePages
-      : Array.from({ length: pageCount }, (_, i) => ({
-        page_number: i,
-        image_url: null,
-        jpeg_url: null,
-        text: "",
-        status: "pending",
-      }));
+    // Build a full pageCount-length array of placeholder slots, then overlay
+    // whatever the subcollection has returned so far. This ensures pages 0..N-1
+    // are always shown even when the subcollection only contains a subset.
+    const placeholders = Array.from({ length: pageCount }, (_, i) => ({
+      page_number: i,
+      image_url: null as string | null,
+      jpeg_url: null as string | null,
+      text: "",
+      status: "pending",
+    }));
+    const liveMap = new Map(livePages.map((p) => [p.page_number, p]));
+    const inProgressPages = placeholders.map((p) => liveMap.get(p.page_number) ?? p);
 
     const doneCount = inProgressPages.filter(p => p.jpeg_url || p.image_url).length;
 
@@ -284,8 +286,8 @@ export default function StoryViewer() {
               {doneCount}/{pageCount} pages drawn — tap to zoom
             </p>
           )}
-          <div className="flex justify-center overflow-x-auto pb-2">
-            <div className="flex flex-row gap-3 snap-x snap-mandatory">
+          <div className="overflow-x-auto pb-2">
+            <div className="flex flex-row gap-3 snap-x snap-mandatory px-4 w-max mx-auto">
             {inProgressPages.map((page, i) => {
               const thumb = page.jpeg_url || page.image_url;
               const imgSrc = thumb || null;

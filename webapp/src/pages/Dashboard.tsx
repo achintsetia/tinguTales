@@ -50,6 +50,8 @@ export default function Dashboard() {
   const [loadingUploads, setLoadingUploads] = useState(false);
   const [deletingUpload, setDeletingUpload] = useState<string | null>(null);
   const [pendingDeleteUpload, setPendingDeleteUpload] = useState<{path: string; filename: string} | null>(null);
+  const [pendingDeleteStory, setPendingDeleteStory] = useState<{storyId: string; title: string} | null>(null);
+  const [deletingStory, setDeletingStory] = useState(false);
   const [exporting] = useState(false);
   const importRef = useRef<HTMLInputElement | null>(null);
 
@@ -157,12 +159,17 @@ export default function Dashboard() {
 
   const draftStories = stories.filter((s) => DRAFT_STATUSES.includes(s.status));
 
-  const handleDelete = async (storyId) => {
+  const handleDelete = async (storyId: string) => {
+    setDeletingStory(true);
     try {
-      await deleteDoc(firestoreDoc(db, "stories", storyId));
+      const deleteFn = httpsCallable(functions, "deleteStory");
+      await deleteFn({ storyId });
       toast.success("Story deleted");
+      setPendingDeleteStory(null);
     } catch {
       toast.error("Failed to delete story");
+    } finally {
+      setDeletingStory(false);
     }
   };
 
@@ -434,7 +441,7 @@ export default function Dashboard() {
                                 variant="ghost"
                                 size="sm"
                                 data-testid={`btn-delete-story-${story.story_id}`}
-                                onClick={(e) => { e.stopPropagation(); handleDelete(story.story_id); }}
+                                onClick={(e) => { e.stopPropagation(); setPendingDeleteStory({ storyId: story.story_id, title: story.title || "Untitled Story" }); }}
                                 className="rounded-full text-[#1E1B4B]/30 hover:text-[#E76F51] hover:bg-[#E76F51]/10 h-7 w-7 p-0 flex-shrink-0"
                               >
                                 <Trash2 className="w-3.5 h-3.5" strokeWidth={2} />
@@ -679,6 +686,47 @@ export default function Dashboard() {
           )
         )}
       </div>
+
+      {/* ── Delete Story Confirmation Modal ── */}
+      <Dialog open={!!pendingDeleteStory} onOpenChange={(open) => { if (!open && !deletingStory) setPendingDeleteStory(null); }}>
+        <DialogContent className="rounded-3xl border-2 border-[#F3E8FF] max-w-sm p-0 overflow-hidden">
+          <div className="h-1.5 w-full bg-gradient-to-r from-[#E76F51] via-[#FF9F1C] to-[#3730A3]" />
+          <div className="px-6 pt-5 pb-6">
+            <DialogHeader className="mb-4">
+              <div className="flex items-center gap-3 mb-1">
+                <div className="w-10 h-10 rounded-2xl bg-[#E76F51]/10 flex items-center justify-center flex-shrink-0">
+                  <Trash2 className="w-5 h-5 text-[#E76F51]" strokeWidth={2} />
+                </div>
+                <DialogTitle className="text-lg text-[#1E1B4B] leading-tight" style={{ fontFamily: "Fredoka" }}>
+                  Delete this story?
+                </DialogTitle>
+              </div>
+              {pendingDeleteStory && (
+                <p className="text-sm text-[#1E1B4B]/50 pl-1 truncate">"{pendingDeleteStory.title}"</p>
+              )}
+            </DialogHeader>
+            <p className="text-sm text-[#1E1B4B]/60 leading-relaxed mb-5">
+              This will permanently delete the storybook, all its illustrations, and the PDF. This action cannot be undone.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setPendingDeleteStory(null)}
+                disabled={deletingStory}
+                className="flex-1 rounded-2xl border-2 border-[#F3E8FF] py-2.5 text-sm font-semibold text-[#1E1B4B]/60 hover:bg-[#F3E8FF]/50 transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => pendingDeleteStory && handleDelete(pendingDeleteStory.storyId)}
+                disabled={deletingStory}
+                className="flex-1 rounded-2xl bg-[#E76F51] hover:bg-[#d4623f] py-2.5 text-sm font-bold text-white transition-colors disabled:opacity-60"
+              >
+                {deletingStory ? "Deleting..." : "Delete"}
+              </button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* ── Delete Upload Confirmation Modal ── */}
       <Dialog open={!!pendingDeleteUpload} onOpenChange={(open) => { if (!open) setPendingDeleteUpload(null); }}>

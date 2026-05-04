@@ -188,10 +188,13 @@ export const processPageImage = onTaskDispatched<PageImageTaskPayload>(
                 "Never draw letters, words, numbers, signs, fake writing, or random text on interior story pages. " +
                 "If the prompt lists required visual story anchors, make each one clearly visible and recognizable. " +
                 "For cover and back-cover pages, follow the prompt's text instructions normally. " +
-                "Character consistency is paramount: the child protagonist must look identical across every page — " +
-                "same face, hair, skin tone, AND clothing. The top garment (shirt/kurta/blouse/top) and bottom garment " +
-                "(pants/skirt/lehenga/dhoti) must exactly match the provided reference avatar image in colour, style, and pattern. " +
-                "Footwear must also be consistent: the child's shoes, sandals, chappals, or bare feet must remain identical in style and colour across every page.",
+                "CHARACTER CONSISTENCY IS THE HIGHEST PRIORITY: the child protagonist must be PIXEL-IDENTICAL in appearance across every page — " +
+                "the reference avatar image provided is the single source of truth. " +
+                "Hair: EXACT same length, colour, style, and accessories as the avatar — never shorten, lengthen, curl, loosen, or change the hair in any way. " +
+                "Face: same eye shape, eye colour, skin tone, nose, and mouth as the avatar — no variations. " +
+                "Top garment: same shirt/kurta/top colour, cut, and pattern as the avatar. " +
+                "Bottom garment: same pants/skirt/lehenga colour, cut, and pattern as the avatar — never substitute a different colour or style. " +
+                "Footwear: same shoes/sandals/chappals as the avatar — identical style and colour on every page.",
               },
             });
 
