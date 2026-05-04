@@ -10,6 +10,7 @@ import { Button } from "../components/ui/button";
 import { Card, CardContent } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../components/ui/dialog";
+import PdfCoverThumbnail from "../components/PdfCoverThumbnail";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
   DropdownMenuSeparator, DropdownMenuTrigger
@@ -406,7 +407,13 @@ export default function Dashboard() {
                           onClick={() => navigate(`/story/${story.story_id}`)}
                         >
                           <div className="aspect-[3/4] bg-gradient-to-br from-[#3730A3]/10 to-[#FF9F1C]/10 relative overflow-hidden">
-                            {story.cover_image_url ? (
+                            {story.images_cleaned_up_at && story.pdf_url ? (
+                              <PdfCoverThumbnail
+                                pdfUrl={story.pdf_url}
+                                alt={story.title}
+                                className="group-hover:scale-105 transition-transform duration-500"
+                              />
+                            ) : story.cover_image_url ? (
                               <img
                                 src={story.cover_image_url}
                                 alt={story.title}

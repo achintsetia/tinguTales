@@ -25,9 +25,6 @@ interface OverlayResult {
   region: DetectedRegion;
 }
 
-const MIN_FONT_SIZE = 22;
-const MAX_FONT_SIZE = 36;
-
 /**
  * Rounds a dimension while keeping it at least one pixel.
  * @param {number} value - Raw dimension.
@@ -61,7 +58,22 @@ function hasTextToRender(payload: PageImageTaskPayload): boolean {
 }
 
 /**
+ * Picks a font size purely from text character count, independent of panel height.
+ * This ensures two texts of similar length always render at the same font size.
+ * @param {string} text - Story text.
+ * @return {number} Font size in pixels.
+ */
+function chooseFontSize(text: string): number {
+  const len = text.trim().length;
+  if (len <= 70) return 36;
+  if (len <= 110) return 32;
+  if (len <= 150) return 28;
+  return 24;
+}
+
+/**
  * Builds the fixed bottom caption region for story text.
+ * Panel height is derived from the chosen font size so it always fits.
  * @param {PageImageTaskPayload} payload - Page image task payload.
  * @param {number} width - Image width.
  * @param {number} height - Image height.
@@ -73,7 +85,8 @@ function buildCaptionRegion(
   height: number
 ): DetectedRegion {
   const textLength = payload.text.trim().length;
-  const heightPct = textLength > 150 ? 0.28 : textLength > 100 ? 0.25 : textLength > 70 ? 0.22 : 0.18;
+  // Panel height grows with text length to safely accommodate more lines.
+  const heightPct = textLength > 150 ? 0.30 : textLength > 110 ? 0.26 : textLength > 70 ? 0.22 : 0.20;
   const regionHeight = round(height * heightPct);
 
   return {
@@ -124,61 +137,6 @@ function isMostlyLatinText(text: string): boolean {
 }
 
 /**
- * Estimates wrapped line count for font sizing.
- * @param {string} text - Text to estimate.
- * @param {number} maxCharsPerLine - Estimated characters per line.
- * @return {number} Estimated line count.
- */
-function estimateLineCount(text: string, maxCharsPerLine: number): number {
-  const paragraphs = text.split(/\n+/).map((line) => line.trim()).filter(Boolean);
-  if (paragraphs.length === 0) return 1;
-
-  return paragraphs.reduce((total, paragraph) => {
-    const words = paragraph.split(/\s+/).filter(Boolean);
-    let lines = 1;
-    let currentLength = 0;
-
-    for (const word of words) {
-      if (word.length > maxCharsPerLine) {
-        lines += Math.max(Math.ceil(word.length / maxCharsPerLine) - 1, 0);
-        currentLength = word.length % maxCharsPerLine;
-        continue;
-      }
-
-      const nextLength = currentLength === 0 ? word.length : currentLength + 1 + word.length;
-      if (nextLength > maxCharsPerLine) {
-        lines++;
-        currentLength = word.length;
-      } else {
-        currentLength = nextLength;
-      }
-    }
-
-    return total + lines;
-  }, 0);
-}
-
-/**
- * Chooses a font size that fits the text inside the caption panel.
- * @param {string} text - Story text.
- * @param {number} width - Available text width.
- * @param {number} height - Available text height.
- * @return {number} Font size.
- */
-function chooseFontSize(text: string, width: number, height: number): number {
-  for (let fontSize = MAX_FONT_SIZE; fontSize >= MIN_FONT_SIZE; fontSize -= 2) {
-    const widthFactor = isMostlyLatinText(text) ? 0.58 : 0.62;
-    const maxCharsPerLine = Math.max(8, Math.floor(width / (fontSize * widthFactor)));
-    const lineCount = estimateLineCount(text, maxCharsPerLine);
-    if (lineCount * fontSize * 1.22 <= height) {
-      return fontSize;
-    }
-  }
-
-  return MIN_FONT_SIZE;
-}
-
-/**
  * Builds a child-friendly Pango font descriptor.
  * @param {string} text - Story text.
  * @param {number} fontSize - Font size.
@@ -210,7 +168,7 @@ function buildTextLayers(
   const innerWidth = Math.max(region.width - padX * 2, 1);
   const innerHeight = Math.max(region.height - padY * 2, 1);
   const text = payload.text.trim();
-  const fontSize = chooseFontSize(text, innerWidth, innerHeight);
+  const fontSize = chooseFontSize(text);
   const isLongText = text.length > 80;
 
   return [{

@@ -66,6 +66,7 @@ export const adminRetryPageImage = onCall<RetryPageRequest>(
     await pageRef.update({
       image_url: null,
       jpeg_url: null,
+      raw_image_url: null,
       text: normalizedText,
       status: "pending",
       image_generation_qa_status: "retry_queued",

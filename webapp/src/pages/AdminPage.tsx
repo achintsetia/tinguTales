@@ -78,6 +78,7 @@ export default function AdminPage() {
   const [expandedStoryId, setExpandedStoryId] = useState<string | null>(null);
   const [storyPagesByStory, setStoryPagesByStory] = useState<Record<string, any[]>>({});
   const [retryingStoryPageId, setRetryingStoryPageId] = useState<string | null>(null);
+  const [retryingStoryTextOverlayId, setRetryingStoryTextOverlayId] = useState<string | null>(null);
 
   // Failed image generation tab
   const [failedImageItems, setFailedImageItems] = useState<any[]>([]);
@@ -91,6 +92,7 @@ export default function AdminPage() {
   const [refundPagesByStory, setRefundPagesByStory] = useState<Record<string, any[]>>({});
   const [refundStoryPdfByStory, setRefundStoryPdfByStory] = useState<Record<string, string>>({});
   const [retryingRefundPageId, setRetryingRefundPageId] = useState<string | null>(null);
+  const [retryingRefundTextOverlayId, setRetryingRefundTextOverlayId] = useState<string | null>(null);
   const [regeneratingPdfForStory, setRegeneratingPdfForStory] = useState<string | null>(null);
   const [sendingCorrectionEmail, setSendingCorrectionEmail] = useState<string | null>(null);
   const [issuingRefund, setIssuingRefund] = useState<string | null>(null);
@@ -330,6 +332,32 @@ export default function AdminPage() {
     }
   };
 
+  const handleStoryRetryTextOverlay = async (storyId: string, pageId: string) => {
+    setRetryingStoryTextOverlayId(pageId);
+    try {
+      const fns = getFunctions(undefined, "asia-south1");
+      await httpsCallable(fns, "adminRetryTextOverlay")({ storyId, pageId });
+      toast.success("Text overlay re-applied");
+      const unsub = onSnapshot(doc(db, "stories", storyId, "pages", pageId), (snap) => {
+        if (!snap.exists()) return;
+        const data = snap.data();
+        setStoryPagesByStory((prev) => ({
+          ...prev,
+          [storyId]: (prev[storyId] ?? []).map((p) =>
+            p.id === pageId ? { ...p, ...data, id: pageId } : p
+          ),
+        }));
+        if (data.image_url || data.jpeg_url) {
+          setRetryingStoryTextOverlayId(null);
+          unsub();
+        }
+      });
+    } catch (e: any) {
+      toast.error(e?.message || "Text overlay retry failed");
+      setRetryingStoryTextOverlayId(null);
+    }
+  };
+
   const handleStoryRegeneratePdf = async (storyId: string) => {
     setRegeneratingPdfForStory(storyId);
     try {
@@ -477,6 +505,32 @@ export default function AdminPage() {
     } catch (e: any) {
       toast.error(e?.message || "Retry failed");
       setRetryingRefundPageId(null);
+    }
+  };
+
+  const handleRefundRetryTextOverlay = async (storyId: string, pageId: string) => {
+    setRetryingRefundTextOverlayId(pageId);
+    try {
+      const fns = getFunctions(undefined, "asia-south1");
+      await httpsCallable(fns, "adminRetryTextOverlay")({ storyId, pageId });
+      toast.success("Text overlay re-applied");
+      const unsub = onSnapshot(doc(db, "stories", storyId, "pages", pageId), (snap) => {
+        if (!snap.exists()) return;
+        const data = snap.data();
+        setRefundPagesByStory((prev) => ({
+          ...prev,
+          [storyId]: (prev[storyId] ?? []).map((p) =>
+            p.id === pageId ? { ...p, ...data, id: pageId } : p
+          ),
+        }));
+        if (data.image_url || data.jpeg_url) {
+          setRetryingRefundTextOverlayId(null);
+          unsub();
+        }
+      });
+    } catch (e: any) {
+      toast.error(e?.message || "Text overlay retry failed");
+      setRetryingRefundTextOverlayId(null);
     }
   };
 
@@ -834,9 +888,11 @@ export default function AdminPage() {
                 storyPagesByStory={storyPagesByStory}
                 fetchStoryPages={fetchStoryPages}
                 handleStoryRetryPage={handleStoryRetryPage}
+                handleStoryRetryTextOverlay={handleStoryRetryTextOverlay}
                 handleStoryRegeneratePdf={handleStoryRegeneratePdf}
                 regeneratingPdfForStory={regeneratingPdfForStory}
                 retryingStoryPageId={retryingStoryPageId}
+                retryingStoryTextOverlayId={retryingStoryTextOverlayId}
                 userEmailById={userEmailById}
                 setLightbox={setLightbox}
               />
@@ -864,6 +920,8 @@ export default function AdminPage() {
                 refundStoryPdfByStory={refundStoryPdfByStory}
                 handleRefundRetryPage={handleRefundRetryPage}
                 retryingRefundPageId={retryingRefundPageId}
+                handleRefundRetryTextOverlay={handleRefundRetryTextOverlay}
+                retryingRefundTextOverlayId={retryingRefundTextOverlayId}
                 handleRefundRegeneratePdf={handleRefundRegeneratePdf}
                 regeneratingPdfForStory={regeneratingPdfForStory}
                 handleSendCorrectionEmail={handleSendCorrectionEmail}

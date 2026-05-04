@@ -830,6 +830,10 @@ export default function StoryViewer() {
                         } catch (e) {
                           console.warn("Failed to persist quality confirmation", e);
                         }
+                        // Fire-and-forget: delete page image files to save storage (PDF is preserved)
+                        httpsCallable(functions, "cleanupStoryImages")({ storyId }).catch((e) =>
+                          console.warn("Image cleanup failed (non-critical)", e)
+                        );
                       }}
                       className="w-full rounded-full bg-[#2A9D8F] hover:bg-[#23877B] text-white font-semibold min-h-[44px] gap-2"
                     >

@@ -308,7 +308,8 @@ export const processPageImage = onTaskDispatched<PageImageTaskPayload>(
           await persistQaProgress();
         }
 
-        finalImage = composedImage;
+        // Store raw (pre-overlay) image so text overlay can be retried cheaply
+        finalImage = resizedImage;
         break;
       }
 
@@ -318,12 +319,21 @@ export const processPageImage = onTaskDispatched<PageImageTaskPayload>(
 
       void recordTokenConsumption(userId, "page_image_generation", "gemini", totalTokens);
 
+      const rawPngPath = `${userId}/${storyId}/pages/${pageIndex}/image_raw.png`;
       const pngPath = `${userId}/${storyId}/pages/${pageIndex}/image.png`;
       const jpgPath = `${userId}/${storyId}/pages/${pageIndex}/image.jpg`;
 
-      const [pngUrl, jpgUrl] = await Promise.all([
-        saveWithDownloadUrl(pngPath, finalImage, "image/png"),
-        sharp(finalImage)
+      // Apply overlay to produce the final display image
+      let composedFinal = finalImage;
+      if (request.data.pageType === "story" && request.data.text.trim().length > 0) {
+        const overlayResult = await renderDeterministicPageText(finalImage, request.data);
+        composedFinal = overlayResult.imageBuffer;
+      }
+
+      const [rawPngUrl, pngUrl, jpgUrl] = await Promise.all([
+        saveWithDownloadUrl(rawPngPath, finalImage, "image/png"),
+        saveWithDownloadUrl(pngPath, composedFinal, "image/png"),
+        sharp(composedFinal)
           .jpeg({quality: 85})
           .toBuffer()
           .then((buf) => saveWithDownloadUrl(jpgPath, buf, "image/jpeg")),
@@ -332,6 +342,7 @@ export const processPageImage = onTaskDispatched<PageImageTaskPayload>(
       await pageRef.update({
         image_url: pngUrl,
         jpeg_url: jpgUrl,
+        raw_image_url: rawPngUrl,
         status: "completed",
         image_generation_qa_status: qaStatus,
         image_generation_qa_warning: qaWarning,

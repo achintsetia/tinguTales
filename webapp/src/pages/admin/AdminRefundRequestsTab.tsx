@@ -15,6 +15,8 @@ interface AdminRefundRequestsTabProps {
   refundStoryPdfByStory: Record<string, string>;
   handleRefundRetryPage: (storyId: string, pageId: string) => void;
   retryingRefundPageId: string | null;
+  handleRefundRetryTextOverlay: (storyId: string, pageId: string) => void;
+  retryingRefundTextOverlayId: string | null;
   handleRefundRegeneratePdf: (storyId: string) => void;
   regeneratingPdfForStory: string | null;
   handleSendCorrectionEmail: (storyId: string) => void;
@@ -43,6 +45,8 @@ export default function AdminRefundRequestsTab({
   refundStoryPdfByStory,
   handleRefundRetryPage,
   retryingRefundPageId,
+  handleRefundRetryTextOverlay,
+  retryingRefundTextOverlayId,
   handleRefundRegeneratePdf,
   regeneratingPdfForStory,
   handleSendCorrectionEmail,
@@ -308,6 +312,23 @@ export default function AdminRefundRequestsTab({
                                 />
                                 {retryingRefundPageId === page.id ? "Retrying…" : "Retry"}
                               </Button>
+                              {page.raw_image_url && page.page_type === "story" && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  disabled={retryingRefundTextOverlayId === page.id}
+                                  onClick={() => handleRefundRetryTextOverlay(storyId, page.id)}
+                                  className="rounded-full text-xs border-[#2A9D8F]/30 text-[#2A9D8F] hover:bg-[#2A9D8F]/10 h-7 px-3"
+                                >
+                                  <RefreshCw
+                                    className={`w-3 h-3 mr-1 ${
+                                      retryingRefundTextOverlayId === page.id ? "animate-spin" : ""
+                                    }`}
+                                    strokeWidth={2}
+                                  />
+                                  {retryingRefundTextOverlayId === page.id ? "Applying…" : "Retry Text"}
+                                </Button>
+                              )}
                             </div>
                           );
                         })}

@@ -11,9 +11,11 @@ interface AdminStoriesTabProps {
   storyPagesByStory: Record<string, any[]>;
   fetchStoryPages: (storyId: string) => Promise<void>;
   handleStoryRetryPage: (storyId: string, pageId: string) => void;
+  handleStoryRetryTextOverlay: (storyId: string, pageId: string) => void;
   handleStoryRegeneratePdf: (storyId: string) => void;
   regeneratingPdfForStory: string | null;
   retryingStoryPageId: string | null;
+  retryingStoryTextOverlayId: string | null;
   userEmailById: Record<string, string>;
   setLightbox: (v: Lightbox | null) => void;
 }
@@ -25,9 +27,11 @@ export default function AdminStoriesTab({
   storyPagesByStory,
   fetchStoryPages,
   handleStoryRetryPage,
+  handleStoryRetryTextOverlay,
   handleStoryRegeneratePdf,
   regeneratingPdfForStory,
   retryingStoryPageId,
+  retryingStoryTextOverlayId,
   userEmailById,
   setLightbox,
 }: AdminStoriesTabProps) {
@@ -230,6 +234,23 @@ export default function AdminStoriesTab({
                                 />
                                 {retryingStoryPageId === page.id ? "Retrying…" : "Retry"}
                               </Button>
+                              {page.raw_image_url && page.page_type === "story" && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  disabled={retryingStoryTextOverlayId === page.id}
+                                  onClick={() => handleStoryRetryTextOverlay(s.id, page.id)}
+                                  className="rounded-full border-[#2A9D8F]/30 text-[#2A9D8F] hover:bg-[#2A9D8F]/10 text-[10px] h-6 px-2"
+                                >
+                                  <RefreshCw
+                                    className={`w-3 h-3 mr-1 ${
+                                      retryingStoryTextOverlayId === page.id ? "animate-spin" : ""
+                                    }`}
+                                    strokeWidth={2}
+                                  />
+                                  {retryingStoryTextOverlayId === page.id ? "Applying…" : "Retry Text"}
+                                </Button>
+                              )}
                             </div>
                           );
                         })}
