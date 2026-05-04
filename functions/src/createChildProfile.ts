@@ -2,6 +2,7 @@ import {onCall, HttpsError} from "firebase-functions/v2/https";
 import * as logger from "firebase-functions/logger";
 import {admin, db} from "./admin.js";
 import {v4 as uuidv4} from "uuid";
+import {notifySlackError} from "./_slack.js";
 
 interface CreateChildProfileData {
   name: string;
@@ -55,6 +56,7 @@ export const createChildProfile = onCall(
       await db.collection("child_profiles").doc(profileId).set(profile);
     } catch (err) {
       logger.error("createChildProfile failed", err);
+      notifySlackError("createChildProfile", err, {userId, profileId});
       throw new HttpsError("internal", "Failed to create profile.");
     }
 

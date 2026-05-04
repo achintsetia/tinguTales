@@ -3,6 +3,7 @@ import {onCall, HttpsError} from "firebase-functions/v2/https";
 import {db} from "./admin.js";
 import {FieldValue} from "firebase-admin/firestore";
 import {recordTokenConsumption} from "./tokenConsumption.js";
+import {notifySlackError} from "./_slack.js";
 
 /** Map 2-letter language codes used in the webapp to Sarvam BCP-47 codes. */
 const LANG_CODE_MAP: Record<string, string> = {
@@ -130,6 +131,7 @@ export const transliterateChildName = onCall<TransliterateRequest, Promise<Trans
     } catch (err) {
       if (err instanceof HttpsError) throw err;
       logger.error("[transliterateChildName] unexpected error", err);
+      notifySlackError("transliterateChildName", err);
       throw new HttpsError("internal", "Transliteration failed unexpectedly.");
     }
   }

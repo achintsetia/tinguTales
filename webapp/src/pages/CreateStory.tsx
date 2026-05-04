@@ -314,7 +314,6 @@ export default function CreateStory() {
     profileId: string; photoPath: string; profileName: string; avatarUrl: string;
   } | null>(null);
   const [deletingUpload, setDeletingUpload] = useState(false);
-  const [isWhitelisted, setIsWhitelisted] = useState<boolean | null>(null);
   // Track previous avatar statuses to detect completed transitions
   const prevStatusesRef = useRef<Record<string, string>>({});
 
@@ -427,35 +426,6 @@ export default function CreateStory() {
     deletePromptProfile?.name ||
     deleteUploadPrompt?.profileName ||
     "Your child";
-
-  useEffect(() => {
-    if (!user?.id) return;
-    if (user.is_admin) {
-      setIsWhitelisted(true);
-      return;
-    }
-
-    let cancelled = false;
-    const emailKey = user.email ? `email:${user.email.trim().toLowerCase()}` : "";
-    Promise.all([
-      getDoc(firestoreDoc(db, "beta_whitelist", user.id)),
-      emailKey ? getDoc(firestoreDoc(db, "beta_whitelist", emailKey)) : Promise.resolve(null as any),
-    ])
-      .then(([uidSnap, emailSnap]) => {
-        if (cancelled) return;
-        const uidAllowed = uidSnap.exists() && uidSnap.data()?.enabled !== false;
-        const emailAllowed = !!emailSnap?.exists?.() && emailSnap.data()?.enabled !== false;
-        setIsWhitelisted(uidAllowed || emailAllowed);
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setIsWhitelisted(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [user?.id, user?.email, user?.is_admin]);
 
   // Auto-transliterate child's name when language changes
   useEffect(() => {
@@ -598,10 +568,6 @@ export default function CreateStory() {
   const clearWizardState = () => localStorage.removeItem(WIZARD_KEY);
 
   const handleCreateProfile = async () => {
-    if (isWhitelisted === false) {
-      toast.error("This app is under beta testing. Contact support to get whitelisted.");
-      return;
-    }
     if (!newProfile.name.trim() || !newProfile.age) {
       toast.error("Please enter name and age");
       return;
@@ -738,10 +704,6 @@ export default function CreateStory() {
 
   // ── Draft flow ──────────────────────────────────────────────────────────
   const handleGenerateDraft = async () => {
-    if (isWhitelisted === false) {
-      setDraftError("This app is under beta testing. Contact support to get whitelisted.");
-      return;
-    }
     if (!selectedProfile || !selectedLang || selectedInterests.length === 0) return;
     setDraftLoading(true);
     setDraftError("");
@@ -1079,7 +1041,6 @@ export default function CreateStory() {
 
   const canProceed = () => {
     if (step === 1) {
-      if (isWhitelisted !== true) return false;
       if (!selectedProfile) return false;
       if (selectedProfile.avatar_status === "pending" || selectedProfile.avatar_status === "generating") return false;
       if (selectedProfile.avatar_status === "failed") return false;
@@ -1093,13 +1054,6 @@ export default function CreateStory() {
 
   return (
     <div className="min-h-screen bg-[#FDFBF7]">
-      {isWhitelisted === false && (
-        <div className="sticky top-0 z-[60] bg-[#FFF3F0] border-b border-[#F8D7D0] px-4 py-3 text-center">
-          <p className="text-sm font-semibold text-[#E76F51]" data-testid="beta-whitelist-message">
-            This app is under beta testing. Contact support to get whitelisted.
-          </p>
-        </div>
-      )}
       {/* Delete-upload confirmation dialog */}
       <Dialog open={!!deleteUploadPrompt} onOpenChange={(open) => { if (!open && !deletingUpload) setDeleteUploadPrompt(null); }}>
         <DialogContent className="rounded-[32px] border-2 border-[#F3E8FF] max-w-lg p-0 overflow-hidden">

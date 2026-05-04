@@ -1,6 +1,7 @@
 import {onCall, HttpsError} from "firebase-functions/v2/https";
 import * as logger from "firebase-functions/logger";
 import {bucket, db} from "./admin.js";
+import {notifySlackError} from "./_slack.js";
 
 interface DeleteStoryData {
   storyId: string;
@@ -62,6 +63,7 @@ export const deleteStory = onCall<DeleteStoryData>(
       }
     } catch (err) {
       logger.warn(`[deleteStory] error listing storage files for prefix ${prefix}: ${err}`);
+      notifySlackError("deleteStory", err, {storyId, userId, prefix});
     }
 
     // 2. Delete pages subcollection documents in batches

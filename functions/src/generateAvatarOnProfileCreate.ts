@@ -2,6 +2,7 @@ import {onDocumentCreated} from "firebase-functions/v2/firestore";
 import * as logger from "firebase-functions/logger";
 import {db} from "./admin.js";
 import {generateAvatar} from "./avatarGeneration.js";
+import {notifySlackError} from "./_slack.js";
 
 export const generateAvatarOnProfileCreate = onDocumentCreated(
   {
@@ -29,6 +30,7 @@ export const generateAvatarOnProfileCreate = onDocumentCreated(
       await generateAvatar(profileId, userId, name, photoUrl);
     } catch (err) {
       logger.error(`Avatar generation failed for profile ${profileId}:`, err);
+      notifySlackError("generateAvatarOnProfileCreate", err, {profileId, userId});
       await db.collection("child_profiles").doc(profileId).update({
         avatar_status: "failed",
       });

@@ -1,5 +1,6 @@
 import {Resend} from "resend";
 import * as logger from "firebase-functions/logger";
+import {notifySlackError} from "./_slack.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Client — lazily initialised so the module can be imported without crashing
@@ -59,6 +60,7 @@ async function send(opts: {
     }
   } catch (err) {
     logger.error("[emailService] unexpected error sending email", err);
+    notifySlackError("emailService", err, {to: Array.isArray(opts.to) ? opts.to.join(",") : opts.to, subject: opts.subject});
   }
 }
 

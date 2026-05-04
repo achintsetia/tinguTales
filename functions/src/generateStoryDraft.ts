@@ -13,6 +13,7 @@ import {
   getConfiguredGeminiModel,
 } from "./geminiConfig.js";
 import {buildBackCoverLessonSentence, normalizeBackCoverText} from "./_backCoverLessonText.js";
+import {notifySlackError} from "./_slack.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Age-appropriate writing level guidance  (mirrors story_planner.py)
@@ -978,6 +979,9 @@ export const generateStoryDraft = onCall<GenerateStoryDraftRequest>(
         updated_at: FieldValue.serverTimestamp(),
       }, {merge: true}).catch(() => {/* best-effort status update */});
       logger.error(`[generateStoryDraft] [${storyId}] failed`, err);
+      if (!(err instanceof HttpsError)) {
+        notifySlackError("generateStoryDraft", err, {storyId, userId});
+      }
       if (err instanceof HttpsError) throw err;
       throw new HttpsError("internal", "Story generation failed. Please try again.");
     }

@@ -2,6 +2,7 @@ import {onCall, HttpsError} from "firebase-functions/v2/https";
 import * as logger from "firebase-functions/logger";
 import {db} from "./admin.js";
 import {generateAvatar} from "./avatarGeneration.js";
+import {notifySlackError} from "./_slack.js";
 
 interface RetryAvatarData {
   profileId: string;
@@ -41,6 +42,7 @@ export const retryAvatarGeneration = onCall(
       await generateAvatar(profileId, userId, data.name as string, data.photo_url as string);
     } catch (err) {
       logger.error(`Avatar retry failed for profile ${profileId}:`, err);
+      notifySlackError("retryAvatarGeneration", err, {profileId, userId});
       await db.collection("child_profiles").doc(profileId).update({
         avatar_status: "failed",
       });

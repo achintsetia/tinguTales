@@ -25,6 +25,7 @@ import {
   getConfiguredGeminiModel,
 } from "./geminiConfig.js";
 import {normalizeBackCoverText} from "./_backCoverLessonText.js";
+import {notifySlackError} from "./_slack.js";
 
 export const processPageImage = onTaskDispatched<PageImageTaskPayload>(
   {
@@ -382,11 +383,14 @@ export const processPageImage = onTaskDispatched<PageImageTaskPayload>(
             logger.info(`[processPageImage] PDF task enqueued for story ${storyId}`);
           } catch (err) {
             logger.error(`[processPageImage] failed to enqueue PDF task for story ${storyId}`, err);
+            notifySlackError("processPageImage:enqueuePdf", err, {storyId, userId});
           }
         }
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err);
+
+      notifySlackError("processPageImage", err, {storyId, pageId, pageIndex: String(pageIndex), userId});
 
       const failureCount = await db.runTransaction(async (tx) => {
         const snap = await tx.get(pageRef);

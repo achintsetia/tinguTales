@@ -44,7 +44,6 @@ export default function Dashboard() {
   const [profiles, setProfiles] = useState([]);
   const [loadingProfiles, setLoadingProfiles] = useState(true);
   const profilesSubscribedRef = useRef(false);
-  const [isWhitelisted, setIsWhitelisted] = useState<boolean | null>(null);
 
   // Storage-scanned uploads
   const [uploads, setUploads] = useState<{path: string; filename: string; downloadUrl: string; updatedAt: string}[]>([]);
@@ -89,41 +88,7 @@ export default function Dashboard() {
     return () => unsub();
   }, [user?.id]);
 
-  // Frontend-only beta gate: only whitelisted users can start new story/profile creation.
-  useEffect(() => {
-    if (!user?.id) return;
-    if (user.is_admin) {
-      setIsWhitelisted(true);
-      return;
-    }
-
-    let cancelled = false;
-    const emailKey = user.email ? `email:${user.email.trim().toLowerCase()}` : "";
-    Promise.all([
-      getDoc(firestoreDoc(db, "beta_whitelist", user.id)),
-      emailKey ? getDoc(firestoreDoc(db, "beta_whitelist", emailKey)) : Promise.resolve(null as any),
-    ])
-      .then(([uidSnap, emailSnap]) => {
-        if (cancelled) return;
-        const uidAllowed = uidSnap.exists() && uidSnap.data()?.enabled !== false;
-        const emailAllowed = !!emailSnap?.exists?.() && emailSnap.data()?.enabled !== false;
-        setIsWhitelisted(uidAllowed || emailAllowed);
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setIsWhitelisted(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [user?.id, user?.email, user?.is_admin]);
-
   const openCreateWizard = () => {
-    if (isWhitelisted === false) {
-      toast.error("This app is under beta testing. Contact support to get whitelisted.");
-      return;
-    }
     localStorage.removeItem("tingu_wizard_state");
     navigate("/create");
   };
@@ -333,14 +298,6 @@ export default function Dashboard() {
       </nav>
 
       <div className="max-w-7xl mx-auto px-6 py-12">
-        {isWhitelisted === false && (
-          <div className="mb-6 rounded-2xl border border-[#F8D7D0] bg-[#FFF3F0] px-4 py-3">
-            <p className="text-sm font-semibold text-[#E76F51]" data-testid="beta-whitelist-message-dashboard">
-              This app is under beta testing. Contact support to get whitelisted.
-            </p>
-          </div>
-        )}
-
         {/* Welcome + CTA */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-8 gap-4">
           <div>
@@ -360,7 +317,6 @@ export default function Dashboard() {
           <Button
             data-testid="btn-create-story"
             onClick={openCreateWizard}
-            disabled={isWhitelisted === false}
             className="rounded-full bg-[#FF9F1C] hover:bg-[#E88A12] text-[#1E1B4B] font-bold px-8 min-h-[56px] text-lg shadow-lg hover:shadow-xl transition-all"
           >
             <Plus className="w-5 h-5 mr-2" strokeWidth={2.5} />
@@ -419,7 +375,6 @@ export default function Dashboard() {
               <Button
                 data-testid="btn-create-story-empty"
                 onClick={openCreateWizard}
-                disabled={isWhitelisted === false}
                 className="rounded-full bg-[#FF9F1C] hover:bg-[#E88A12] text-[#1E1B4B] font-bold px-8 min-h-[56px] text-lg"
               >
                 <Sparkles className="w-5 h-5 mr-2" strokeWidth={2.5} />
@@ -672,7 +627,6 @@ export default function Dashboard() {
               <p className="text-sm text-[#1E1B4B]/50 mt-1">Photos you upload when creating a child profile will appear here</p>
               <Button
                 onClick={openCreateWizard}
-                disabled={isWhitelisted === false}
                 className="mt-6 rounded-full bg-[#FF9F1C] hover:bg-[#E88A12] text-[#1E1B4B] font-bold"
               >
                 <Plus className="w-4 h-4 mr-1.5" strokeWidth={2.5} />

@@ -1,6 +1,7 @@
 import {onCall, HttpsError} from "firebase-functions/v2/https";
 import * as logger from "firebase-functions/logger";
 import {bucket} from "./admin.js";
+import {notifySlackError} from "./_slack.js";
 
 export interface UploadItem {
   path: string;
@@ -32,6 +33,7 @@ export const getUserUploads = onCall(
       [files] = await bucket.getFiles({prefix});
     } catch (err) {
       logger.error("[getUserUploads] failed to list files", err);
+      notifySlackError("getUserUploads", err, {userId});
       throw new HttpsError("internal", "Failed to list uploads.");
     }
 

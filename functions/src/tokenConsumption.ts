@@ -1,6 +1,7 @@
 import * as logger from "firebase-functions/logger";
 import {FieldValue} from "firebase-admin/firestore";
 import {db} from "./admin.js";
+import {notifySlackError} from "./_slack.js";
 
 export type Provider = "gemini" | "sarvam";
 
@@ -57,5 +58,6 @@ export async function recordTokenConsumption(
   } catch (err) {
     // Never fail the parent operation because of a logging write
     logger.error("[tokenConsumption] failed to write record", err);
+    notifySlackError("tokenConsumption", err, {userId, task, provider});
   }
 }

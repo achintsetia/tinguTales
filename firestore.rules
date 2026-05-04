@@ -32,18 +32,6 @@ service cloud.firestore {
       allow write: if false;
     }
 
-    // Beta whitelist — users can read their own UID entry or their email-based entry.
-    // Email entries use doc id format: email:<lowercase_email>
-    match /beta_whitelist/{entryId} {
-      allow read: if request.auth != null && (
-        request.auth.uid == entryId ||
-        (request.auth.token.email != null
-          && entryId == ("email:" + request.auth.token.email.lower())) ||
-        isAdmin()
-      );
-      allow write: if isAdmin();
-    }
-
     // Stories — users can read/delete their own; partial client updates allowed for wizard fields
     match /stories/{storyId} {
       allow read: if request.auth != null && (resource.data.user_id == request.auth.uid || isAdmin());

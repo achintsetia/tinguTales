@@ -19,7 +19,6 @@ import AdminStoriesTab from "./admin/AdminStoriesTab";
 import AdminFailedImagesTab from "./admin/AdminFailedImagesTab";
 import AdminRefundRequestsTab from "./admin/AdminRefundRequestsTab";
 import AdminContactsTab from "./admin/AdminContactsTab";
-import AdminWhitelistTab from "./admin/AdminWhitelistTab";
 import AdminCouponsTab from "./admin/AdminCouponsTab";
 import AdminPaymentsTab from "./admin/AdminPaymentsTab";
 import AdminCostsTab from "./admin/AdminCostsTab";
@@ -32,7 +31,6 @@ const ADMIN_TAB_IDS = [
   "failed-image-generation",
   "refund-requests",
   "contacts",
-  "whitelist",
   "coupons",
   "payments",
   "costs",
@@ -45,7 +43,6 @@ const TABS = [
   { id: "failed-image-generation", label: "Failed Image Generation" },
   { id: "refund-requests", label: "Refund Requests" },
   { id: "contacts", label: "Contacts" },
-  { id: "whitelist", label: "Whitelist" },
   { id: "coupons", label: "Coupons" },
   { id: "payments", label: "Payments" },
   { id: "costs", label: "Costs" },
@@ -67,14 +64,10 @@ export default function AdminPage() {
   const [loadingCosts, setLoadingCosts] = useState(false);
   const [expandedUser, setExpandedUser] = useState<string | null>(null);
 
-  // Whitelist tab
-  const [allUsers, setAllUsers] = useState<any[]>([]);
-  const [whitelistMap, setWhitelistMap] = useState<Record<string, any>>({});
-  const [loadingWhitelist, setLoadingWhitelist] = useState(false);
-  const [whitelistSearch, setWhitelistSearch] = useState("");
-  const [savingWhitelistUser, setSavingWhitelistUser] = useState<string | null>(null);
-  const [whitelistEmail, setWhitelistEmail] = useState("");
-  const [addingWhitelistEmail, setAddingWhitelistEmail] = useState(false);
+  // Contacts tab
+  const [contacts, setContacts] = useState<any[]>([]);
+  const [loadingContacts, setLoadingContacts] = useState(false);
+  const [deletingContactId, setDeletingContactId] = useState<string | null>(null);
 
   // Users tab
   const [userProfiles, setUserProfiles] = useState<any[]>([]);
@@ -90,11 +83,6 @@ export default function AdminPage() {
   const [failedImageItems, setFailedImageItems] = useState<any[]>([]);
   const [loadingFailedImages, setLoadingFailedImages] = useState(false);
   const [retryingFailedDocId, setRetryingFailedDocId] = useState<string | null>(null);
-
-  // Contacts tab
-  const [contacts, setContacts] = useState<any[]>([]);
-  const [loadingContacts, setLoadingContacts] = useState(false);
-  const [deletingContactId, setDeletingContactId] = useState<string | null>(null);
 
   // Refund requests tab
   const [refundRequests, setRefundRequests] = useState<any[]>([]);
@@ -146,7 +134,6 @@ export default function AdminPage() {
       setTab("overview");
     }
     if (savedTab === "costs" && !costReport) fetchCosts();
-    if (savedTab === "whitelist") fetchWhitelistData();
     if (savedTab === "coupons") fetchCoupons();
     if (savedTab === "failed-image-generation") fetchFailedImageGenerations();
     if (savedTab === "contacts") fetchContacts();
@@ -257,7 +244,6 @@ export default function AdminPage() {
   const switchTab = (tabId: string) => {
     setTab(tabId);
     if (tabId === "costs" && !costReport) fetchCosts();
-    if (tabId === "whitelist") fetchWhitelistData();
     if (tabId === "coupons") fetchCoupons();
     if (tabId === "failed-image-generation") fetchFailedImageGenerations();
     if (tabId === "contacts") fetchContacts();
@@ -723,137 +709,6 @@ export default function AdminPage() {
     }
   };
 
-  // ─── Whitelist handlers ──────────────────────────────────────────────────────
-
-  const fetchWhitelistData = async () => {
-    setLoadingWhitelist(true);
-    try {
-      const [usersSnap, whitelistSnap] = await Promise.all([
-        getDocs(collection(db, "user_profile")),
-        getDocs(collection(db, "beta_whitelist")),
-      ]);
-      setAllUsers(
-        usersSnap.docs
-          .map((d) => ({ id: d.id, ...d.data() }))
-          .sort((a: any, b: any) =>
-            (a.name ?? "").toLowerCase().localeCompare((b.name ?? "").toLowerCase())
-          )
-      );
-      const map: Record<string, any> = {};
-      whitelistSnap.docs.forEach((d) => {
-        map[d.id] = d.data();
-      });
-      setWhitelistMap(map);
-    } catch {
-      toast.error("Failed to load whitelist data");
-    } finally {
-      setLoadingWhitelist(false);
-    }
-  };
-
-  const handleToggleWhitelist = async (u: any, enabled: boolean) => {
-    const userId = u.uid || u.id;
-    if (!userId) return;
-    setSavingWhitelistUser(userId);
-    try {
-      const emailLower = (u.email || "").trim().toLowerCase();
-      const emailKey = emailLower ? `email:${emailLower}` : "";
-      if (enabled) {
-        await setDoc(
-          doc(db, "beta_whitelist", userId),
-          {
-            user_id: userId,
-            email: u.email || "",
-            email_lower: emailLower,
-            name: u.name || "",
-            enabled: true,
-            added_at: new Date().toISOString(),
-            added_by: user?.id || "",
-          },
-          { merge: true }
-        );
-      } else {
-        const deletes: Promise<void>[] = [
-          deleteDoc(doc(db, "beta_whitelist", userId)) as Promise<void>,
-        ];
-        if (emailKey)
-          deletes.push(deleteDoc(doc(db, "beta_whitelist", emailKey)) as Promise<void>);
-        await Promise.all(deletes);
-      }
-      setWhitelistMap((prev) => {
-        if (enabled) {
-          return {
-            ...prev,
-            [userId]: {
-              ...(prev[userId] ?? {}),
-              user_id: userId,
-              email: u.email || "",
-              email_lower: emailLower,
-              name: u.name || "",
-              enabled: true,
-            },
-          };
-        }
-        const next = { ...prev };
-        delete next[userId];
-        if (emailKey) delete next[emailKey];
-        return next;
-      });
-      toast.success(enabled ? "User whitelisted" : "User removed from whitelist");
-    } catch {
-      toast.error("Failed to update whitelist");
-    } finally {
-      setSavingWhitelistUser(null);
-    }
-  };
-
-  const handleAddWhitelistEmail = async () => {
-    const emailLower = whitelistEmail.trim().toLowerCase();
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailLower)) {
-      toast.error("Enter a valid email");
-      return;
-    }
-    const key = `email:${emailLower}`;
-    setAddingWhitelistEmail(true);
-    try {
-      await setDoc(
-        doc(db, "beta_whitelist", key),
-        {
-          email: emailLower,
-          email_lower: emailLower,
-          enabled: true,
-          added_at: new Date().toISOString(),
-          added_by: user?.id || "",
-        },
-        { merge: true }
-      );
-      setWhitelistMap((prev) => ({
-        ...prev,
-        [key]: { ...(prev[key] ?? {}), email: emailLower, email_lower: emailLower, enabled: true },
-      }));
-      setWhitelistEmail("");
-      toast.success("Email added to whitelist");
-    } catch {
-      toast.error("Failed to add email");
-    } finally {
-      setAddingWhitelistEmail(false);
-    }
-  };
-
-  const handleRemoveWhitelistEmail = async (key: string) => {
-    try {
-      await deleteDoc(doc(db, "beta_whitelist", key));
-      setWhitelistMap((prev) => {
-        const next = { ...prev };
-        delete next[key];
-        return next;
-      });
-      toast.success("Email removed from whitelist");
-    } catch {
-      toast.error("Failed to remove email");
-    }
-  };
-
   // ─── Costs handlers ──────────────────────────────────────────────────────────
 
   const fetchCosts = async () => {
@@ -1034,24 +889,6 @@ export default function AdminPage() {
                 fetchContacts={fetchContacts}
                 handleDeleteContact={handleDeleteContact}
                 deletingContactId={deletingContactId}
-              />
-            )}
-
-            {tab === "whitelist" && (
-              <AdminWhitelistTab
-                allUsers={allUsers}
-                whitelistMap={whitelistMap}
-                loadingWhitelist={loadingWhitelist}
-                whitelistSearch={whitelistSearch}
-                setWhitelistSearch={setWhitelistSearch}
-                savingWhitelistUser={savingWhitelistUser}
-                whitelistEmail={whitelistEmail}
-                setWhitelistEmail={setWhitelistEmail}
-                addingWhitelistEmail={addingWhitelistEmail}
-                fetchWhitelistData={fetchWhitelistData}
-                handleToggleWhitelist={handleToggleWhitelist}
-                handleAddWhitelistEmail={handleAddWhitelistEmail}
-                handleRemoveWhitelistEmail={handleRemoveWhitelistEmail}
               />
             )}
 

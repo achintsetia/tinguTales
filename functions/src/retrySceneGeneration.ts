@@ -3,6 +3,7 @@ import {onCall, HttpsError} from "firebase-functions/v2/https";
 import {FieldValue} from "firebase-admin/firestore";
 import {db} from "./admin.js";
 import {runScenePipeline} from "./_generateScenesCore.js";
+import {notifySlackError} from "./_slack.js";
 
 export const retrySceneGeneration = onCall<{storyId: string}>(
   {region: "asia-south1", timeoutSeconds: 300, memory: "512MiB"},
@@ -36,6 +37,7 @@ export const retrySceneGeneration = onCall<{storyId: string}>(
     try {
       await runScenePipeline(storyId);
     } catch (err) {
+      notifySlackError("retrySceneGeneration", err, {storyId, userId});
       await storyRef.update({
         status: "scenes_failed",
         error_message: err instanceof Error ? err.message : String(err),

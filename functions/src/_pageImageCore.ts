@@ -4,6 +4,7 @@ import {GoogleGenAI} from "@google/genai";
 import {v4 as uuidv4} from "uuid";
 import {db, bucket} from "./admin.js";
 import {GEMINI_QA_TIMEOUT_MS} from "./geminiConfig.js";
+import {notifySlackError} from "./_slack.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -393,6 +394,7 @@ export async function verifyGeneratedImageQuality(
     return {passed, reason};
   } catch (err) {
     logger.warn("[verifyGeneratedImageQuality] QA check error — failing open", err);
+    notifySlackError("verifyGeneratedImageQuality", err);
     return {passed: true, reason: "qa_error_fail_open"};
   }
 }

@@ -1,6 +1,7 @@
 import {onCall, HttpsError} from "firebase-functions/v2/https";
 import * as logger from "firebase-functions/logger";
 import {bucket, db} from "./admin.js";
+import {notifySlackError} from "./_slack.js";
 
 interface DeleteUserUploadData {
   /** Storage path of the file to delete, e.g. "{userId}/uploads/photo.jpg" */
@@ -42,6 +43,7 @@ export const deleteUserUpload = onCall(
         logger.warn(`[deleteUserUpload] file not found (already deleted): ${path}`);
       } else {
         logger.error("[deleteUserUpload] storage delete failed", err);
+        notifySlackError("deleteUserUpload", err, {path});
         throw new HttpsError("internal", "Failed to delete file from storage.");
       }
     }

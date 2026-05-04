@@ -4,6 +4,7 @@ import {getFunctions} from "firebase-admin/functions";
 import {db} from "./admin.js";
 import {PageImageTaskPayload} from "./_pageImageCore.js";
 import {normalizeBackCoverText} from "./_backCoverLessonText.js";
+import {notifySlackError} from "./_slack.js";
 
 export const enqueuePageImageTask = onDocumentCreated(
   {
@@ -83,6 +84,7 @@ export const enqueuePageImageTask = onDocumentCreated(
       logger.info(`[enqueuePageImageTask] enqueued page ${data.page} for story ${storyId}`);
     } catch (err) {
       logger.error(`[enqueuePageImageTask] failed to enqueue page ${data.page}`, err);
+      notifySlackError("enqueuePageImageTask", err, {storyId, pageId, page: String(data.page)});
     }
   }
 );
