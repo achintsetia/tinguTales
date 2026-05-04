@@ -12,7 +12,7 @@ import {
   createGeminiClient,
   getConfiguredGeminiModel,
 } from "./geminiConfig.js";
-import {buildBackCoverLessonSentence, normalizeBackCoverText} from "./_backCoverLessonText.js";
+import {buildBackCoverLessonSentence} from "./_backCoverLessonText.js";
 import {notifySlackError} from "./_slack.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -928,21 +928,6 @@ export const generateStoryDraft = onCall<GenerateStoryDraftRequest>(
         coverPage.cover_title = finalTitle;
         coverPage.cover_subtitle = finalSubtitle;
         coverPage.text = "";
-      }
-
-      // Enforce back cover policy: English-only text with English child name.
-      const backCoverPage = draftPages.find((p) => p.page === pageCount - 1);
-      if (backCoverPage) {
-        const normalizedText = normalizeBackCoverText(
-          String(backCoverPage.text ?? ""),
-          childEnglishName,
-          String(outline.moral ?? ""),
-          outline.lessonPhrase
-        );
-        if (normalizedText !== String(backCoverPage.text ?? "").trim()) {
-          backCoverPage.text = normalizedText;
-          logger.info(`[generateStoryDraft] [${storyId}] back cover normalized to English policy`);
-        }
       }
 
       // Record token consumption

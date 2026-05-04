@@ -47,8 +47,11 @@ export const cleanupStoryImages = onCall<CleanupStoryImagesData>(
     try {
       const [files] = await bucket.getFiles({prefix: pagesPrefix});
       if (files.length > 0) {
+        // Keep page 0 (cover) so the cover thumbnail remains visible on the dashboard
+        const coverPrefix = `${pagesPrefix}0/`;
+        const filesToDelete = files.filter((f) => !f.name.startsWith(coverPrefix));
         await Promise.all(
-          files.map(async (file) => {
+          filesToDelete.map(async (file) => {
             try {
               await file.delete();
               deletedCount++;

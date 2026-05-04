@@ -4,7 +4,7 @@ import {getFunctions} from "firebase-admin/functions";
 import {FieldValue} from "firebase-admin/firestore";
 import {db} from "./admin.js";
 import {assertAdmin} from "./_adminHelpers.js";
-import {normalizeBackCoverText} from "./_backCoverLessonText.js";
+
 
 interface RetryPageRequest {
   storyId: string;
@@ -38,20 +38,13 @@ export const adminRetryPageImage = onCall<RetryPageRequest>(
     const totalPages: number = story.page_count ?? 8;
     const pageType = page.page_type as string;
     const rawText = (page.text as string) ?? "";
-    const normalizedText = pageType === "back_cover" ?
-      normalizeBackCoverText(
-        rawText,
-        (story.child_name_english as string) || (story.child_name as string) || "",
-        String(story.moral ?? "")
-      ) :
-      rawText;
 
     const payload = {
       storyId,
       pageId,
       pageIndex: page.page as number,
       pageType,
-      text: normalizedText,
+      text: rawText,
       scenePrompt: (page.scene_prompt as string) ?? "",
       coverTitle: page.cover_title as string | undefined,
       coverSubtitle: page.cover_subtitle as string | undefined,
@@ -67,7 +60,7 @@ export const adminRetryPageImage = onCall<RetryPageRequest>(
       image_url: null,
       jpeg_url: null,
       raw_image_url: null,
-      text: normalizedText,
+      text: rawText,
       status: "pending",
       image_generation_qa_status: "retry_queued",
       image_generation_qa_warning: "",

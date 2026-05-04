@@ -2,7 +2,7 @@ import * as logger from "firebase-functions/logger";
 import {onCall, HttpsError} from "firebase-functions/v2/https";
 import {FieldValue} from "firebase-admin/firestore";
 import {db} from "./admin.js";
-import {normalizeBackCoverText} from "./_backCoverLessonText.js";
+
 
 interface ApproveStoryDraftRequest {
   storyId: string;
@@ -40,21 +40,6 @@ export const approveStoryDraft = onCall<ApproveStoryDraftRequest>(
       throw new HttpsError("failed-precondition", `Story must be in draft_ready state (current: ${story.status}).`);
     }
 
-    // Enforce back-cover policy: English-only text with English-script child name.
-    const childEnglishName = (story.child_name_english as string) || (story.child_name as string) || "";
-    const expectedBackCoverPage = Number(story.page_count) > 1 ? Number(story.page_count) - 1 : -1;
-    const normalizedPagesText = pagesText.map((p) => {
-      const isBackCover = p.page_type === "back_cover" || p.page === expectedBackCoverPage;
-      if (!isBackCover) return p;
-
-      const normalizedText = normalizeBackCoverText(
-        String(p.text ?? ""),
-        childEnglishName,
-        String(story.moral ?? "")
-      );
-      return {...p, text: normalizedText};
-    });
-
     // Sync user-edited title/subtitle from cover page back to story-level fields
     const coverPage = pagesText.find((p) => p.page === 0);
     const titleUpdate: Record<string, unknown> = {};
@@ -62,7 +47,7 @@ export const approveStoryDraft = onCall<ApproveStoryDraftRequest>(
     if (coverPage?.cover_subtitle !== undefined) titleUpdate.subtitle = coverPage.cover_subtitle;
 
     await storyRef.update({
-      draft_pages: normalizedPagesText,
+      draft_pages: pagesText,
       ...titleUpdate,
       status: "approved",
       updated_at: FieldValue.serverTimestamp(),

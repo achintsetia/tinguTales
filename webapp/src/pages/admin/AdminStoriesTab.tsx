@@ -9,7 +9,8 @@ interface AdminStoriesTabProps {
   expandedStoryId: string | null;
   setExpandedStoryId: (v: string | null) => void;
   storyPagesByStory: Record<string, any[]>;
-  fetchStoryPages: (storyId: string) => Promise<void>;
+  fetchStoryPages: (storyId: string, force?: boolean) => Promise<void>;
+  refreshingStoryPagesId: string | null;
   handleStoryRetryPage: (storyId: string, pageId: string) => void;
   handleStoryRetryTextOverlay: (storyId: string, pageId: string) => void;
   handleStoryRegeneratePdf: (storyId: string) => void;
@@ -26,6 +27,7 @@ export default function AdminStoriesTab({
   setExpandedStoryId,
   storyPagesByStory,
   fetchStoryPages,
+  refreshingStoryPagesId,
   handleStoryRetryPage,
   handleStoryRetryTextOverlay,
   handleStoryRegeneratePdf,
@@ -136,19 +138,34 @@ export default function AdminStoriesTab({
                   <div className="border-t-2 border-[#F3E8FF] px-4 pt-4 pb-5 bg-[#FDFBF7]">
                     <div className="flex items-center justify-between mb-3">
                       <p className="text-xs font-bold text-[#1E1B4B]/40 uppercase tracking-wider">Pages</p>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        disabled={regeneratingPdfForStory === s.id}
-                        onClick={() => handleStoryRegeneratePdf(s.id)}
-                        className="rounded-full border-[#FF9F1C]/40 text-[#FF9F1C] hover:bg-[#FF9F1C]/10 text-xs h-7"
-                      >
-                        <RefreshCw
-                          className={`w-3 h-3 mr-1 ${regeneratingPdfForStory === s.id ? "animate-spin" : ""}`}
-                          strokeWidth={2}
-                        />
-                        {regeneratingPdfForStory === s.id ? "Regenerating…" : "Regen PDF"}
-                      </Button>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={refreshingStoryPagesId === s.id}
+                          onClick={() => fetchStoryPages(s.id, true)}
+                          className="rounded-full border-[#3730A3]/30 text-[#3730A3] hover:bg-[#3730A3]/10 text-xs h-7"
+                        >
+                          <RefreshCw
+                            className={`w-3 h-3 mr-1 ${refreshingStoryPagesId === s.id ? "animate-spin" : ""}`}
+                            strokeWidth={2}
+                          />
+                          {refreshingStoryPagesId === s.id ? "Refreshing…" : "Refresh Pages"}
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={regeneratingPdfForStory === s.id}
+                          onClick={() => handleStoryRegeneratePdf(s.id)}
+                          className="rounded-full border-[#FF9F1C]/40 text-[#FF9F1C] hover:bg-[#FF9F1C]/10 text-xs h-7"
+                        >
+                          <RefreshCw
+                            className={`w-3 h-3 mr-1 ${regeneratingPdfForStory === s.id ? "animate-spin" : ""}`}
+                            strokeWidth={2}
+                          />
+                          {regeneratingPdfForStory === s.id ? "Regenerating…" : "Regen PDF"}
+                        </Button>
+                      </div>
                     </div>
                     {pages.length === 0 ? (
                       <p className="text-xs text-[#1E1B4B]/40">Loading pages…</p>

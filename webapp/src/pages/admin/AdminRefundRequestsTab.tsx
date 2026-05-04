@@ -11,7 +11,8 @@ interface AdminRefundRequestsTabProps {
   expandedRefundId: string | null;
   setExpandedRefundId: (v: string | null) => void;
   refundPagesByStory: Record<string, any[]>;
-  fetchRefundStoryPages: (storyId: string) => Promise<void>;
+  fetchRefundStoryPages: (storyId: string, force?: boolean) => Promise<void>;
+  refreshingRefundPagesStoryId: string | null;
   refundStoryPdfByStory: Record<string, string>;
   handleRefundRetryPage: (storyId: string, pageId: string) => void;
   retryingRefundPageId: string | null;
@@ -42,6 +43,7 @@ export default function AdminRefundRequestsTab({
   setExpandedRefundId,
   refundPagesByStory,
   fetchRefundStoryPages,
+  refreshingRefundPagesStoryId,
   refundStoryPdfByStory,
   handleRefundRetryPage,
   retryingRefundPageId,
@@ -153,9 +155,26 @@ export default function AdminRefundRequestsTab({
                       Story ID: <span className="font-mono normal-case">{storyId}</span>
                     </p>
 
-                    <p className="text-xs font-bold text-[#1E1B4B]/40 uppercase tracking-wider mb-3">
-                      Story Pages
-                    </p>
+                    <div className="flex items-center justify-between gap-2 mb-3">
+                      <p className="text-xs font-bold text-[#1E1B4B]/40 uppercase tracking-wider">
+                        Story Pages
+                      </p>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={!storyId || refreshingRefundPagesStoryId === storyId}
+                        onClick={() => storyId && fetchRefundStoryPages(storyId, true)}
+                        className="rounded-full border-[#3730A3]/30 text-[#3730A3] hover:bg-[#3730A3]/10 text-xs h-7"
+                      >
+                        <RefreshCw
+                          className={`w-3 h-3 mr-1 ${
+                            refreshingRefundPagesStoryId === storyId ? "animate-spin" : ""
+                          }`}
+                          strokeWidth={2}
+                        />
+                        {refreshingRefundPagesStoryId === storyId ? "Refreshing…" : "Refresh Pages"}
+                      </Button>
+                    </div>
                     {pages.length === 0 ? (
                       <p className="text-xs text-[#1E1B4B]/40 mb-4">Loading pages…</p>
                     ) : (

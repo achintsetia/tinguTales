@@ -94,30 +94,3 @@ export function buildBackCoverLessonSentence(
 
   return `${childName} learned ${lessonClauseFromMoral(moral)}.`;
 }
-
-/**
- * Normalizes back-cover copy when it is generic, non-English, or misses the child name.
- * @param {string} rawText - Existing back-cover text.
- * @param {string} childEnglishName - Child's name in English script.
- * @param {string} moral - Story moral.
- * @param {string} candidateLessonPhrase - Optional model-generated sentence.
- * @return {string} Back-cover text with a specific lesson sentence.
- */
-export function normalizeBackCoverText(
-  rawText: string,
-  childEnglishName: string,
-  moral: string,
-  candidateLessonPhrase = ""
-): string {
-  const raw = rawText.trim();
-  const childName = childEnglishName.trim();
-  const hasNonAscii = Array.from(raw).some((ch) => ch.charCodeAt(0) > 127);
-  const hasEnglishName = childName ? raw.toLowerCase().includes(childName.toLowerCase()) : true;
-
-  if (raw && !hasNonAscii && hasEnglishName && !hasGenericBackCoverLesson(raw)) {
-    return raw;
-  }
-
-  const lessonSentence = buildBackCoverLessonSentence(childEnglishName, moral, candidateLessonPhrase);
-  return `${lessonSentence} Try it in your own adventure too!`;
-}

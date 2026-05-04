@@ -77,6 +77,7 @@ export default function AdminPage() {
   // Stories tab
   const [expandedStoryId, setExpandedStoryId] = useState<string | null>(null);
   const [storyPagesByStory, setStoryPagesByStory] = useState<Record<string, any[]>>({});
+  const [refreshingStoryPagesId, setRefreshingStoryPagesId] = useState<string | null>(null);
   const [retryingStoryPageId, setRetryingStoryPageId] = useState<string | null>(null);
   const [retryingStoryTextOverlayId, setRetryingStoryTextOverlayId] = useState<string | null>(null);
 
@@ -90,6 +91,7 @@ export default function AdminPage() {
   const [loadingRefunds, setLoadingRefunds] = useState(false);
   const [expandedRefundId, setExpandedRefundId] = useState<string | null>(null);
   const [refundPagesByStory, setRefundPagesByStory] = useState<Record<string, any[]>>({});
+  const [refreshingRefundPagesStoryId, setRefreshingRefundPagesStoryId] = useState<string | null>(null);
   const [refundStoryPdfByStory, setRefundStoryPdfByStory] = useState<Record<string, string>>({});
   const [retryingRefundPageId, setRetryingRefundPageId] = useState<string | null>(null);
   const [retryingRefundTextOverlayId, setRetryingRefundTextOverlayId] = useState<string | null>(null);
@@ -273,8 +275,9 @@ export default function AdminPage() {
 
   // ─── Stories handlers ────────────────────────────────────────────────────────
 
-  const fetchStoryPages = async (storyId: string) => {
-    if (storyPagesByStory[storyId]) return;
+  const fetchStoryPages = async (storyId: string, force = false) => {
+    if (!force && storyPagesByStory[storyId]) return;
+    if (force) setRefreshingStoryPagesId(storyId);
     try {
       const snap = await getDocs(
         query(collection(db, "stories", storyId, "pages"), orderBy("page", "asc"))
@@ -285,6 +288,8 @@ export default function AdminPage() {
       }));
     } catch {
       toast.error("Failed to load story pages");
+    } finally {
+      if (force) setRefreshingStoryPagesId(null);
     }
   };
 
@@ -446,8 +451,9 @@ export default function AdminPage() {
     }
   };
 
-  const fetchRefundStoryPages = async (storyId: string) => {
-    if (refundPagesByStory[storyId]) return;
+  const fetchRefundStoryPages = async (storyId: string, force = false) => {
+    if (!force && refundPagesByStory[storyId]) return;
+    if (force) setRefreshingRefundPagesStoryId(storyId);
     try {
       const [pagesSnap, storySnap] = await Promise.all([
         getDocs(query(collection(db, "stories", storyId, "pages"), orderBy("page", "asc"))),
@@ -461,6 +467,8 @@ export default function AdminPage() {
       if (pdfUrl) setRefundStoryPdfByStory((prev) => ({ ...prev, [storyId]: pdfUrl }));
     } catch {
       toast.error("Failed to load story pages");
+    } finally {
+      if (force) setRefreshingRefundPagesStoryId(null);
     }
   };
 
@@ -887,6 +895,7 @@ export default function AdminPage() {
                 setExpandedStoryId={setExpandedStoryId}
                 storyPagesByStory={storyPagesByStory}
                 fetchStoryPages={fetchStoryPages}
+                refreshingStoryPagesId={refreshingStoryPagesId}
                 handleStoryRetryPage={handleStoryRetryPage}
                 handleStoryRetryTextOverlay={handleStoryRetryTextOverlay}
                 handleStoryRegeneratePdf={handleStoryRegeneratePdf}
@@ -917,6 +926,7 @@ export default function AdminPage() {
                 setExpandedRefundId={setExpandedRefundId}
                 refundPagesByStory={refundPagesByStory}
                 fetchRefundStoryPages={fetchRefundStoryPages}
+                refreshingRefundPagesStoryId={refreshingRefundPagesStoryId}
                 refundStoryPdfByStory={refundStoryPdfByStory}
                 handleRefundRetryPage={handleRefundRetryPage}
                 retryingRefundPageId={retryingRefundPageId}

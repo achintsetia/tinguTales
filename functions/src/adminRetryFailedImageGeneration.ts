@@ -4,7 +4,7 @@ import {getFunctions} from "firebase-admin/functions";
 import {FieldValue} from "firebase-admin/firestore";
 import {db} from "./admin.js";
 import {assertAdmin} from "./_adminHelpers.js";
-import {normalizeBackCoverText} from "./_backCoverLessonText.js";
+
 
 interface RetryFailedImageGenerationRequest {
   failedDocId: string;
@@ -46,23 +46,14 @@ export const adminRetryFailedImageGeneration = onCall<RetryFailedImageGeneration
       throw new HttpsError("failed-precondition", "Failed image item has no valid redrive payload.");
     }
 
-    const storySnap = await db.collection("stories").doc(payload.storyId).get();
-    const story = storySnap.data() ?? {};
-    const normalizedText = payload.pageType === "back_cover" ?
-      normalizeBackCoverText(
-        payload.text ?? "",
-        (story.child_name_english as string) || (story.child_name as string) || "",
-        String(story.moral ?? "")
-      ) :
-      payload.text;
-    const retryPayload = {...payload, text: normalizedText};
+    const retryPayload = payload;
 
     const pageRef = db.collection("stories").doc(payload.storyId).collection("pages").doc(payload.pageId);
     await pageRef.set({
       image_url: null,
       jpeg_url: null,
       raw_image_url: null,
-      text: normalizedText,
+      text: payload.text,
       status: "pending",
       image_generation_qa_status: "retry_queued",
       image_generation_qa_warning: "",

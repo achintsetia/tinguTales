@@ -24,7 +24,7 @@ import {
   createGeminiClient,
   getConfiguredGeminiModel,
 } from "./geminiConfig.js";
-import {normalizeBackCoverText} from "./_backCoverLessonText.js";
+
 import {notifySlackError} from "./_slack.js";
 
 export const processPageImage = onTaskDispatched<PageImageTaskPayload>(
@@ -49,20 +49,6 @@ export const processPageImage = onTaskDispatched<PageImageTaskPayload>(
     const requiredVisualElements = inferRequiredVisualElements(request.data);
 
     try {
-      if (request.data.pageType === "back_cover") {
-        const storySnap = await db.collection("stories").doc(storyId).get();
-        const story = storySnap.data() ?? {};
-        const normalizedText = normalizeBackCoverText(
-          request.data.text ?? "",
-          (story.child_name_english as string) || (story.child_name as string) || "",
-          String(story.moral ?? "")
-        );
-        if (normalizedText !== (request.data.text ?? "")) {
-          request.data.text = normalizedText;
-          await pageRef.set({text: normalizedText}, {merge: true});
-        }
-      }
-
       await pageRef.update({
         status: "processing",
         image_generation_qa_status: "processing",

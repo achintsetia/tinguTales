@@ -10,7 +10,7 @@ import {
   createGeminiClient,
   getConfiguredGeminiModel,
 } from "./geminiConfig.js";
-import {normalizeBackCoverText} from "./_backCoverLessonText.js";
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -450,7 +450,6 @@ export async function runScenePipeline(storyId: string): Promise<void> {
   const userId: string = data.user_id ?? "";
   const profileId: string = data.profile_id ?? "";
   const childName: string = data.child_name ?? "the child";
-  const childEnglishName: string = data.child_name_english ?? childName;
   const childAge: number = data.child_age ?? 5;
   const numPages: number = data.page_count ?? 8;
   const storyTitle: string = data.title ?? "";
@@ -571,13 +570,7 @@ export async function runScenePipeline(storyId: string): Promise<void> {
     const pageDoc: SceneData = {
       page: idx,
       page_type: pageType,
-      text: pageType === "back_cover" ?
-        normalizeBackCoverText(
-          draftPage?.text ?? "",
-          childEnglishName,
-          String(data.moral ?? "")
-        ) :
-        draftPage?.text ?? "",
+      text: draftPage?.text ?? "",
       scene_prompt: item.scene_prompt,
       ...(idx === 0 ? {
         cover_title: storyTitle,

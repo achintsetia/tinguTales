@@ -6,7 +6,6 @@ import {db, bucket} from "./admin.js";
 import {assertAdmin} from "./_adminHelpers.js";
 import {saveWithDownloadUrl} from "./_pageImageCore.js";
 import {renderDeterministicPageText} from "./_pageTextOverlay.js";
-import {normalizeBackCoverText} from "./_backCoverLessonText.js";
 import type {PageImageTaskPayload} from "./_pageImageCore.js";
 
 interface RetryTextOverlayRequest {
@@ -40,14 +39,9 @@ export const adminRetryTextOverlay = onCall<RetryTextOverlayRequest>(
       throw new HttpsError("invalid-argument", "Text overlay retry is only supported for story pages.");
     }
 
-    const rawText = (page.text as string) ?? "";
-    const normalizedText = normalizeBackCoverText(
-      rawText,
-      (story.child_name_english as string) || (story.child_name as string) || "",
-      String(story.moral ?? "")
-    );
+    const rawText = ((page.text as string) ?? "").trim();
 
-    if (!normalizedText.trim()) {
+    if (!rawText) {
       throw new HttpsError("invalid-argument", "Page has no text to overlay.");
     }
 
@@ -70,7 +64,7 @@ export const adminRetryTextOverlay = onCall<RetryTextOverlayRequest>(
       pageId,
       pageIndex,
       pageType,
-      text: normalizedText,
+      text: rawText,
       scenePrompt: (page.scene_prompt as string) ?? "",
       coverTitle: undefined,
       coverSubtitle: undefined,
