@@ -27,7 +27,6 @@ export {adminRetryPdf} from "./adminRetryPdf.js";
 export {adminRetryFailedImageGeneration} from "./adminRetryFailedImageGeneration.js";
 export {redeemDiscountCoupon} from "./redeemDiscountCoupon.js";
 export {deleteStory} from "./deleteStory.js";
-export {cleanupStoryImages} from "./cleanupStoryImages.js";
 export {recordPdfDownload} from "./recordPdfDownload.js";
 export {submitRefundRequest} from "./submitRefundRequest.js";
 export {adminSendCorrectionEmail} from "./adminSendCorrectionEmail.js";
