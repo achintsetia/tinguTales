@@ -27,22 +27,26 @@ function ageWritingGuide(age: number): string {
   if (age <= 2) {
     return "WRITING LEVEL — Age 2: Use only the simplest nouns and action verbs a toddler knows " +
       "(cat, dog, run, jump, eat, sleep, big, small). " +
-      "Max 1 sentence per page. No subordinate clauses. Lots of sound words (moo, splash, boom).";
+      "Max 1 sentence per page. No subordinate clauses. Lots of sound words (moo, splash, boom). " +
+      "Keep sentences extremely simple, direct, and non-redundant (e.g. instead of 'Avyaa smiled a big smile', write 'Avyaa smiled').";
   } else if (age === 3) {
     return "WRITING LEVEL — Age 3: Very short, simple sentences (5-7 words each). " +
       "1-2 sentences per page. Use repetitive, rhythmic patterns children can memorise. " +
       "Only everyday concrete words — no abstract concepts. " +
-      "Examples of good vocabulary: happy, hungry, small, big, fast, friend, home.";
+      "Examples of good vocabulary: happy, hungry, small, big, fast, friend, home. " +
+      "Keep sentences direct and avoid descriptive extensions to simple actions (e.g. do not write 'Avyaa smiled a big smile'; write 'Avyaa smiled').";
   } else if (age === 4) {
     return "WRITING LEVEL — Age 4: Short sentences (6-9 words each). 2 sentences per page. " +
       "Simple cause-and-effect ('He was hungry, so he ate'). " +
       "Introduce 1-2 new vocabulary words per story page, explained by context. " +
-      "Repetition and rhyme are encouraged. Avoid complex tenses.";
+      "Repetition and rhyme are encouraged. Avoid complex tenses. " +
+      "Keep sentences direct and avoid descriptive extensions to simple actions (e.g. do not write 'Avyaa smiled a big smile'; write 'Avyaa smiled').";
   } else if (age === 5) {
     return "WRITING LEVEL — Age 5: Sentences of 8-10 words. 2-3 sentences per page. " +
       "Simple compound sentences joined with 'and', 'but', 'so'. " +
       "Can include mild emotions (excited, nervous, proud). " +
-      "Short dialogue is great. Avoid multi-syllable abstract words.";
+      "Short dialogue is great. Avoid multi-syllable abstract words. " +
+      "Keep sentences direct and avoid descriptive extensions to simple actions (e.g. do not write 'Avyaa smiled a big smile'; write 'Avyaa smiled').";
   } else if (age === 6) {
     return "WRITING LEVEL — Age 6 (early reader): Sentences of 8-12 words. 2-3 sentences per page. " +
       "Compound and simple complex sentences. Introduce descriptive adjectives. " +
@@ -537,7 +541,8 @@ async function qaAndNaturalize(
     `   "The protagonist felt". Instead: "Oh! He stopped.", "What a sunny morning!", "${childName} smiled."\n` +
     "4. For Indian languages: use natural spoken forms — contractions, common expressions, " +
     "   particles and interjections used in everyday speech (e.g. \"अरे!\", \"वाह!\", \"enna?\" etc.).\n" +
-    "5. Keep cultural references warm and authentic — mention familiar Indian sounds, smells, textures.\n\n" +
+    "5. Keep cultural references warm and authentic — mention familiar Indian sounds, smells, textures.\n" +
+    (childAge <= 5 ? `6. Keep sentences extremely simple and direct. Avoid verbose, redundant, or overly descriptive phrasing for simple actions. For example, never write "${childName} smiled a big smile"; write only "${childName} smiled".\n\n` : "\n") +
     "QUALITY CHECKS (fix any issues found):\n" +
     `- Name consistency: "${childName}" must be spelled exactly the same on every page.\n` +
     `- Language consistency: story pages MUST be in ${languageName} only.\n` +

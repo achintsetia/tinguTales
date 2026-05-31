@@ -95,7 +95,7 @@ export async function generateAvatar(
     "- EXACTLY preserve the child's body build and proportions\n" +
     "- Have big expressive eyes and a warm smile\n" +
     "- Use warm, vibrant colors (marigold, teal, indigo accents)\n" +
-    "- Have a clean circular portrait composition\n" +
+    "- Be a full body illustration, showing the child from head to toe (must NOT be an upper body, bust, or portrait crop)\n" +
     "- Indian cultural style, cheerful and magical\n" +
     `The child's name is ${name}. Make them look like a storybook hero!\n` +
     `IMPORTANT: The output image must contain ONLY the cartoon avatar of the child and the child's name "${name}" written below the avatar. ` +
